@@ -1,0 +1,711 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  Box,
+  BrainCircuit,
+  Camera,
+  CheckCircle2,
+  ClipboardCheck,
+  Copy,
+  FilePlus2,
+  Image as ImageIcon,
+  Layers3,
+  Maximize2,
+  PlusCircle,
+  Rotate3D,
+  Save,
+  ScanLine,
+  Sparkles,
+  Stethoscope,
+  Wand2,
+  ZoomIn
+} from "lucide-react";
+import * as THREE from "three";
+import { getAttachmentChecklist, getClinicalAiSuggestions, getCodeAdvisor, getEstimateIQ, getImagingFindings, getNarrativeDraft } from "../lib/engines";
+import { ChartEntry, ChartStatus, Patient, ProcedureLine, ToothCondition, ToothFinding, ToothSurface } from "../lib/types";
+import { ConfidenceChip, RiskChip } from "./StatusChip";
+
+interface ClinicalWorkspaceProps {
+  patient: Patient;
+  onCreateTask: (title: string) => void;
+}
+
+const upperTeeth = Array.from({ length: 16 }, (_, index) => index + 1);
+const lowerTeeth = Array.from({ length: 16 }, (_, index) => 32 - index);
+const surfaces: ToothSurface[] = ["O", "M", "D", "B", "L", "F"];
+const statusOptions: ChartStatus[] = ["Planned", "Existing", "Completed", "Watch"];
+const conditionLabels: { key: ToothCondition; label: string }[] = [
+  { key: "caries", label: "Caries" },
+  { key: "restoration", label: "Restoration" },
+  { key: "crown", label: "Crown" },
+  { key: "rct", label: "RCT" },
+  { key: "implant", label: "Implant" },
+  { key: "missing", label: "Missing" },
+  { key: "watch", label: "Watch" }
+];
+
+const procedureTemplates = [
+  { condition: "caries" as const, label: "Composite filling", description: "Posterior composite", baseCode: "D2391", fee: 185 },
+  { condition: "crown" as const, label: "Crown", description: "Porcelain/ceramic crown", baseCode: "D2740", fee: 1280 },
+  { condition: "rct" as const, label: "Root canal", description: "Molar root canal therapy", baseCode: "D3330", fee: 1420 },
+  { condition: "watch" as const, label: "Watch", description: "Monitor tooth/surface", baseCode: "WATCH", fee: 0 }
+];
+
+export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspaceProps) {
+  const seededEntries = useMemo(() => seedChartEntries(patient), [patient]);
+  const [chartEntries, setChartEntries] = useState<ChartEntry[]>(seededEntries);
+  const [selectedTooth, setSelectedTooth] = useState(Number(patient.plannedProcedure.tooth ?? patient.toothFindings[0]?.tooth ?? 14));
+  const [selectedSurfaces, setSelectedSurfaces] = useState<ToothSurface[]>(normalizeSurfaces(patient.plannedProcedure.surface ?? patient.toothFindings[0]?.surface ?? "O"));
+  const [selectedCondition, setSelectedCondition] = useState<ToothCondition>("caries");
+  const [selectedStatus, setSelectedStatus] = useState<ChartStatus>("Planned");
+  const [noteDraft, setNoteDraft] = useState("");
+  const [activeProcedure, setActiveProcedure] = useState(procedureTemplates[0]);
+
+  useEffect(() => {
+    setChartEntries(seededEntries);
+    setSelectedTooth(Number(patient.plannedProcedure.tooth ?? patient.toothFindings[0]?.tooth ?? 14));
+    setSelectedSurfaces(normalizeSurfaces(patient.plannedProcedure.surface ?? patient.toothFindings[0]?.surface ?? "O"));
+    setSelectedCondition(patient.toothFindings[0]?.condition ?? "caries");
+    setNoteDraft("");
+  }, [patient, seededEntries]);
+
+  const codeOptions = getCodeAdvisor(patient);
+  const imagingFindings = getImagingFindings(patient);
+  const aiSuggestions = getClinicalAiSuggestions(patient, noteDraft);
+  const checklist = getAttachmentChecklist(patient);
+  const estimate = getEstimateIQ(patient);
+  const selectedEntries = chartEntries.filter((entry) => entry.tooth === selectedTooth);
+  const selectedFinding = patient.toothFindings.find((finding) => finding.tooth === selectedTooth) ?? patient.toothFindings[0];
+  const selectedProcedure = buildProcedure(activeProcedure.condition, selectedTooth, selectedSurfaces);
+  const treatmentQueue = useMemo(() => {
+    const plannedChartLines = chartEntries
+      .filter((entry) => entry.status === "Planned" && entry.fee > 0)
+      .map<ProcedureLine>((entry) => ({
+        code: entry.code,
+        description: entry.description,
+        fee: entry.fee,
+        category: entry.condition === "crown" || entry.condition === "rct" ? "major" : "basic",
+        tooth: String(entry.tooth),
+        surface: entry.surfaces.join("")
+      }));
+    return [patient.plannedProcedure, ...plannedChartLines].slice(0, 6);
+  }, [chartEntries, patient.plannedProcedure]);
+  const treatmentQueueTotal = treatmentQueue.reduce((sum, procedure) => sum + procedure.fee, 0);
+
+  function toggleSurface(surface: ToothSurface) {
+    setSelectedSurfaces((current) => {
+      if (current.includes(surface)) {
+        const next = current.filter((item) => item !== surface);
+        return next.length === 0 ? ["O"] : next;
+      }
+      return [...current, surface];
+    });
+  }
+
+  function applyProcedure(template = activeProcedure) {
+    const procedure = buildProcedure(template.condition, selectedTooth, selectedSurfaces);
+    const entry: ChartEntry = {
+      id: `chart-${Date.now()}`,
+      tooth: selectedTooth,
+      surfaces: selectedSurfaces,
+      condition: template.condition,
+      status: selectedStatus,
+      code: procedure.code,
+      description: procedure.description,
+      fee: procedure.fee,
+      note: noteDraft || smartNote(template.condition, selectedTooth, selectedSurfaces, selectedStatus),
+      provider: patient.provider,
+      createdAt: "Today"
+    };
+    setSelectedCondition(template.condition);
+    setActiveProcedure(template);
+    setChartEntries((current) => [entry, ...current]);
+    setNoteDraft("");
+    onCreateTask(`${selectedStatus} ${procedure.description} on #${selectedTooth} ${selectedSurfaces.join("")}`);
+  }
+
+  return (
+    <section className="clinical-workspace">
+      <div className="patient-strip">
+        <div className="patient-monogram">{patient.name.split(" ").map((part) => part[0]).join("")}</div>
+        <div>
+          <h2>{patient.name}</h2>
+          <p>{patient.age} · {patient.visitType} · {patient.provider}</p>
+        </div>
+        <Metric label="Next Appt" value={`${patient.appointmentTime} today`} />
+        <Metric label="Patient Est." value={currency(estimate.patientEstimate)} />
+        <Metric label="Queued Tx" value={currency(treatmentQueueTotal)} />
+        <button className="primary-small">Patient Actions</button>
+      </div>
+
+      <div className="clinical-tabs">
+        {["Overview", "Clinical", "Treatment Plan", "Perio", "Imaging", "3D", "Documents", "Notes", "Account"].map((tab) => (
+          <button className={tab === "Clinical" ? "active" : ""} key={tab}>{tab}</button>
+        ))}
+      </div>
+
+      <div className="clinical-grid advanced-clinical-grid">
+        <div className="clinical-left">
+          <article className="clinical-card tooth-card">
+            <div className="clinical-heading">
+              <h3>Surface-Level Odontogram</h3>
+              <span>Click tooth, then surface</span>
+            </div>
+            <ToothArch teeth={upperTeeth} entries={chartEntries} findings={patient.toothFindings} selectedTooth={selectedTooth} onSelect={setSelectedTooth} arch="upper" />
+            <ToothArch teeth={lowerTeeth} entries={chartEntries} findings={patient.toothFindings} selectedTooth={selectedTooth} onSelect={setSelectedTooth} arch="lower" />
+            <div className="tooth-legend">
+              {conditionLabels.map((item) => (
+                <span key={item.key}><i className={`condition-dot ${item.key}`} />{item.label}</span>
+              ))}
+            </div>
+            <div className="surface-row surface-builder">
+              <strong>Tooth {selectedTooth}</strong>
+              {surfaces.map((surface) => (
+                <button className={selectedSurfaces.includes(surface) ? "active" : ""} key={surface} onClick={() => toggleSurface(surface)}>
+                  {surface}
+                </button>
+              ))}
+            </div>
+            <SurfaceMap
+              selectedSurfaces={selectedSurfaces}
+              condition={selectedCondition}
+              entries={selectedEntries}
+              onSurfaceClick={toggleSurface}
+            />
+            <div className="finding-summary">
+              <RiskChip risk={selectedFinding?.severity ?? "Low"} />
+              <span>{selectedFinding?.note ?? "No active chart finding on this tooth."}</span>
+            </div>
+          </article>
+
+          <article className="clinical-card note-builder-card">
+            <div className="clinical-heading">
+              <h3>Chairside Note + Filling Builder</h3>
+              <button onClick={() => applyProcedure()}><PlusCircle size={15} />Add to chart</button>
+            </div>
+            <div className="procedure-grid">
+              {procedureTemplates.map((template) => (
+                <button
+                  className={activeProcedure.label === template.label ? "active" : ""}
+                  key={template.label}
+                  onClick={() => {
+                    setActiveProcedure(template);
+                    setSelectedCondition(template.condition);
+                  }}
+                >
+                  <span>{template.label}</span>
+                  <strong>{buildProcedure(template.condition, selectedTooth, selectedSurfaces).code}</strong>
+                </button>
+              ))}
+            </div>
+            <div className="status-row">
+              {statusOptions.map((status) => (
+                <button className={selectedStatus === status ? "active" : ""} key={status} onClick={() => setSelectedStatus(status)}>
+                  {status}
+                </button>
+              ))}
+            </div>
+            <label className="note-field">
+              <span>Clinical note for #{selectedTooth} {selectedSurfaces.join("")}</span>
+              <textarea
+                value={noteDraft}
+                onChange={(event) => setNoteDraft(event.target.value)}
+                placeholder={smartNote(activeProcedure.condition, selectedTooth, selectedSurfaces, selectedStatus)}
+              />
+            </label>
+            <div className="smart-code-preview">
+              <div>
+                <span>Smart code</span>
+                <strong>{selectedProcedure.code}</strong>
+              </div>
+              <div>
+                <span>Procedure</span>
+                <strong>{selectedProcedure.description}</strong>
+              </div>
+              <div>
+                <span>Fee</span>
+                <strong>{currency(selectedProcedure.fee)}</strong>
+              </div>
+            </div>
+          </article>
+
+          <article className="clinical-card perio-card">
+            <div className="clinical-heading">
+              <h3>Perio Quick Chart</h3>
+              <RiskChip risk={patient.perioRisk} />
+            </div>
+            <div className="perio-grid" aria-label="Periodontal probing chart">
+              {Array.from({ length: 32 }, (_, index) => {
+                const tooth = index < 16 ? index + 1 : 32 - (index - 16);
+                const base = patient.perioRisk === "High" ? 4 : patient.perioRisk === "Medium" ? 3 : 2;
+                const value = tooth === selectedTooth ? base + 2 : base + ((tooth + index) % 3 === 0 ? 1 : 0);
+                return <span className={value >= 5 ? "risk" : value >= 4 ? "watch" : ""} key={`${tooth}-${index}`}>{value}</span>;
+              })}
+            </div>
+            <div className="perio-metrics">
+              <Metric label="Plaque" value={`${patient.plaquePercent}%`} />
+              <Metric label="Bleeding" value={`${patient.bleedingPercent}%`} />
+              <Metric label="Perio Risk" value={patient.perioRisk} />
+              <Metric label="Updated" value="Today" />
+            </div>
+          </article>
+        </div>
+
+        <div className="clinical-center">
+          <article className="clinical-card render-card">
+            <div className="clinical-heading">
+              <h3>3D Tooth + Restoration Viewer</h3>
+              <div className="viewer-tools">
+                <button className="active"><Rotate3D size={14} />Rotate</button>
+                <button><Layers3 size={14} />Layers</button>
+                <button><Box size={14} />Occlusion</button>
+              </div>
+            </div>
+            <Tooth3DViewer tooth={selectedTooth} surfaces={selectedSurfaces} condition={selectedCondition} />
+            <div className="render-inspector">
+              <span>Selected #{selectedTooth}</span>
+              <strong>{selectedSurfaces.join(", ")} · {selectedCondition}</strong>
+              <small>Prototype 3D scene for orientation, restoration planning, and future CBCT/model overlays.</small>
+            </div>
+          </article>
+
+          <article className="clinical-card ai-copilot-card">
+            <div className="clinical-heading">
+              <h3><BrainCircuit size={16} />AI Clinical Copilot</h3>
+              <button onClick={() => onCreateTask("Provider to review AI clinical suggestions")}><CheckCircle2 size={14} />Provider review</button>
+            </div>
+            <p className="ai-disclaimer">Decision support only. Suggestions must be confirmed by the dentist before diagnosis, treatment planning, or billing.</p>
+            <div className="ai-suggestion-list">
+              {aiSuggestions.slice(0, 4).map((suggestion) => (
+                <div className="ai-suggestion" key={suggestion.id}>
+                  <div className="ai-suggestion-top">
+                    <span>{suggestion.source}</span>
+                    <RiskChip risk={suggestion.risk} />
+                  </div>
+                  <strong>{suggestion.title}</strong>
+                  <p>{suggestion.detail}</p>
+                  <div className="evidence-row">
+                    {suggestion.evidence.slice(0, 2).map((item) => (
+                      <small key={item}>{item}</small>
+                    ))}
+                  </div>
+                  <button onClick={() => onCreateTask(suggestion.nextStep)}><Sparkles size={14} />{suggestion.nextStep}</button>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="clinical-card imaging-card">
+            <div className="clinical-heading">
+              <h3>Imaging Viewer</h3>
+              <div className="viewer-tools">
+                <button><ScanLine size={14} />Pan</button>
+                <button className="active">BWx</button>
+                <button>PA</button>
+                <button><Maximize2 size={14} />2x2</button>
+                <button>Compare</button>
+                <button className="active">AI Findings</button>
+              </div>
+            </div>
+            <div className="xray-layout">
+              <div className="xray-frame">
+                <img src="/demo-bitewing-xray.png" alt="Fictional dental bitewing X-ray demo" />
+                {imagingFindings.slice(0, 2).map((finding, index) => (
+                  <span className={`xray-marker marker-${index + 1}`} key={finding.title}>{finding.toothArea}</span>
+                ))}
+                <button className="xray-expand" aria-label="Open X-ray full screen"><Maximize2 size={17} /></button>
+              </div>
+              <div className="xray-controls">
+                <Control label="Brightness" value="0" />
+                <Control label="Contrast" value="+8" />
+                <Control label="Zoom" value="128%" />
+                <button><ZoomIn size={14} /> Enhance</button>
+                <button><Camera size={14} /> Compare</button>
+              </div>
+            </div>
+            <div className="xray-thumbs">
+              {[1, 2, 3, 4].map((thumb) => (
+                <button className={thumb === 2 ? "active" : ""} key={thumb}>
+                  <img src="/demo-bitewing-xray.png" alt="" />
+                </button>
+              ))}
+            </div>
+          </article>
+        </div>
+
+        <div className="clinical-right">
+          <article className="clinical-card tooth-inspector-card">
+            <div className="clinical-heading">
+              <h3>Tooth Inspector</h3>
+              <button onClick={() => onCreateTask(`Review tooth #${selectedTooth} clinical chart`)}><Save size={14} />Review</button>
+            </div>
+            <div className="tooth-inspector-hero">
+              <span>#{selectedTooth}</span>
+              <div>
+                <strong>{selectedEntries.length} charted items</strong>
+                <small>{selectedSurfaces.join("")} selected · {selectedStatus}</small>
+              </div>
+            </div>
+            <div className="chart-entry-list">
+              {selectedEntries.length === 0 ? (
+                <p>No charted procedures on this tooth yet. Click a surface and add a note or filling.</p>
+              ) : (
+                selectedEntries.map((entry) => (
+                  <div className="chart-entry" key={entry.id}>
+                    <span className={`status-dot ${entry.status.toLowerCase()}`} />
+                    <div>
+                      <strong>{entry.surfaces.join("")} · {entry.description}</strong>
+                      <small>{entry.code} · {entry.status} · {entry.provider}</small>
+                      <p>{entry.note}</p>
+                    </div>
+                    {entry.fee > 0 && <b>{currency(entry.fee)}</b>}
+                  </div>
+                ))
+              )}
+            </div>
+          </article>
+
+          <article className="clinical-card code-card">
+            <div className="clinical-heading">
+              <h3>CDT Code Advisor</h3>
+              <button onClick={() => onCreateTask("Provider to verify CDT code against current manual")}>Add from plan</button>
+            </div>
+            <p className="code-warning">Coding must be verified against the current CDT manual and payer policy before submission.</p>
+            {codeOptions.map((code) => (
+              <div className="code-option" key={code.code}>
+                <div>
+                  <strong>{code.code}</strong>
+                  <span>{code.label}</span>
+                  <small>{code.appliesTo}</small>
+                </div>
+                <ConfidenceChip confidence={code.confidence} />
+              </div>
+            ))}
+            <h4>Documentation Required</h4>
+            <ul className="doc-list">
+              {codeOptions[0]?.documentation.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </article>
+
+          <article className="clinical-card treatment-queue">
+            <div className="clinical-heading">
+              <h3>Treatment Plan Queue</h3>
+              <strong>{currency(treatmentQueueTotal)}</strong>
+            </div>
+            {treatmentQueue.map((procedure, index) => (
+              <div className="plan-row" key={`${procedure.code}-${index}`}>
+                <span>{index + 1}</span>
+                <div>
+                  <strong>{procedure.tooth ? `${procedure.tooth} · ` : ""}{procedure.description}</strong>
+                  <small>{procedure.code}{procedure.surface ? ` · ${procedure.surface}` : ""}</small>
+                </div>
+                <b>{currency(procedure.fee)}</b>
+              </div>
+            ))}
+          </article>
+        </div>
+      </div>
+
+      <div className="imaging-bottom clinical-worklist">
+        <div>
+          <h4>AI Findings ({imagingFindings.length})</h4>
+          {imagingFindings.map((finding) => (
+            <div className="ai-finding" key={finding.title}>
+              <AlertTriangle size={15} />
+              <span>{finding.title}: {finding.detail}</span>
+              <RiskChip risk={finding.severity} />
+            </div>
+          ))}
+        </div>
+        <div>
+          <h4>Attachments & X-ray Checklist</h4>
+          {checklist.map((item) => (
+            <div className="checkline" key={item.label}>
+              <input type="checkbox" checked={item.complete} readOnly />
+              <span>{item.label}</span>
+              <strong className={item.complete ? "complete" : item.required ? "missing" : ""}>{item.complete ? "Complete" : item.required ? "Missing" : "Optional"}</strong>
+            </div>
+          ))}
+        </div>
+        <div className="narrative-box">
+          <h4>Narrative Generator</h4>
+          <p>{getNarrativeDraft(patient)}</p>
+          <button onClick={() => onCreateTask("Insert provider-reviewed clinical narrative")}><Copy size={14} />Insert to clinical note</button>
+        </div>
+      </div>
+
+        <div className="wish-actions">
+        {[
+          ["One-click crown narrative", Wand2],
+          ["Pre-auth packet builder", FilePlus2],
+          ["Missing attachment detector", ClipboardCheck],
+          ["Before/after compare", ImageIcon],
+          ["Chairside patient estimate", Sparkles],
+          ["AI diagnosis checklist", BrainCircuit],
+          ["Hygiene recall gap", Stethoscope],
+          ["Clinical handoff note", Copy],
+          ["Finalize surfaces + codes", CheckCircle2]
+        ].map(([label, Icon]) => {
+          const TypedIcon = Icon as typeof Wand2;
+          return (
+            <button key={String(label)} onClick={() => onCreateTask(String(label))}>
+              <TypedIcon size={18} />
+              <span>{String(label)}</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ToothArch({
+  teeth,
+  entries,
+  findings,
+  selectedTooth,
+  onSelect,
+  arch
+}: {
+  teeth: number[];
+  entries: ChartEntry[];
+  findings: ToothFinding[];
+  selectedTooth: number;
+  onSelect: (tooth: number) => void;
+  arch: "upper" | "lower";
+}) {
+  return (
+    <div className={`tooth-arch ${arch}`}>
+      {teeth.map((tooth) => {
+        const finding = findings.find((item) => item.tooth === tooth);
+        const entry = entries.find((item) => item.tooth === tooth);
+        const condition = entry?.condition ?? finding?.condition ?? "";
+        return (
+          <button
+            className={`tooth ${condition} ${selectedTooth === tooth ? "selected" : ""}`}
+            key={tooth}
+            onClick={() => onSelect(tooth)}
+            aria-label={`Tooth ${tooth}`}
+          >
+            <span className="tooth-number">{tooth}</span>
+            <span className="tooth-shape">
+              {["M", "O", "D"].map((surface) => (
+                <i key={surface} className={entry?.surfaces.includes(surface as ToothSurface) ? "charted" : ""} />
+              ))}
+            </span>
+            {(finding || entry) && <i className={`condition-dot ${condition}`} />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SurfaceMap({
+  selectedSurfaces,
+  condition,
+  entries,
+  onSurfaceClick
+}: {
+  selectedSurfaces: ToothSurface[];
+  condition: ToothCondition;
+  entries: ChartEntry[];
+  onSurfaceClick: (surface: ToothSurface) => void;
+}) {
+  return (
+    <div className="surface-map" aria-label="Clickable tooth surfaces">
+      {surfaces.map((surface) => {
+        const charted = entries.find((entry) => entry.surfaces.includes(surface));
+        return (
+          <button
+            className={`${surface.toLowerCase()} ${selectedSurfaces.includes(surface) ? "active" : ""} ${charted?.condition ?? condition}`}
+            key={surface}
+            onClick={() => onSurfaceClick(surface)}
+            title={`${surface} surface`}
+          >
+            {surface}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function Tooth3DViewer({ tooth, surfaces: selectedSurfaces, condition }: { tooth: number; surfaces: ToothSurface[]; condition: ToothCondition }) {
+  const mountRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color("#f8fbff");
+    const camera = new THREE.PerspectiveCamera(42, mount.clientWidth / mount.clientHeight, 0.1, 100);
+    camera.position.set(0, 2.1, 7);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(mount.clientWidth, mount.clientHeight);
+    mount.appendChild(renderer.domElement);
+
+    const key = new THREE.DirectionalLight("#ffffff", 2.5);
+    key.position.set(3, 5, 4);
+    scene.add(key);
+    scene.add(new THREE.AmbientLight("#bcd7ff", 1.4));
+
+    const group = new THREE.Group();
+    scene.add(group);
+
+    const enamel = new THREE.MeshStandardMaterial({ color: "#fbf7ec", roughness: 0.48, metalness: 0.02 });
+    const rootMat = new THREE.MeshStandardMaterial({ color: "#ead3b5", roughness: 0.7 });
+    const fillMat = new THREE.MeshStandardMaterial({ color: surfaceColor(condition), roughness: 0.32, metalness: 0.08 });
+
+    const crown = new THREE.Mesh(new THREE.SphereGeometry(1.28, 48, 28), enamel);
+    crown.scale.set(1.18, 0.88, 0.96);
+    crown.position.y = 0.9;
+    group.add(crown);
+
+    [-0.52, 0.52].forEach((x) => {
+      const root = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.15, 2.55, 24), rootMat);
+      root.position.set(x, -0.72, 0);
+      root.rotation.z = x > 0 ? -0.08 : 0.08;
+      group.add(root);
+    });
+
+    const grooveMat = new THREE.MeshStandardMaterial({ color: "#d6c9b8", roughness: 0.85 });
+    const groove = new THREE.Mesh(new THREE.TorusGeometry(0.44, 0.025, 12, 60), grooveMat);
+    groove.rotation.x = Math.PI / 2;
+    groove.position.set(0, 1.55, 0.03);
+    group.add(groove);
+
+    selectedSurfaces.forEach((surface, index) => {
+      const restoration = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.07, 0.32), fillMat);
+      const offset = surfaceOffset(surface);
+      restoration.position.set(offset.x, 1.82 + index * 0.012, offset.z);
+      restoration.rotation.y = offset.rotate;
+      group.add(restoration);
+    });
+
+    const grid = new THREE.GridHelper(5, 8, "#d6e2ef", "#e8eff7");
+    grid.position.y = -2.04;
+    scene.add(grid);
+
+    let frame = 0;
+    const resizeObserver = new ResizeObserver(() => {
+      if (!mount.clientWidth || !mount.clientHeight) return;
+      camera.aspect = mount.clientWidth / mount.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(mount.clientWidth, mount.clientHeight);
+    });
+    resizeObserver.observe(mount);
+
+    function animate() {
+      frame = requestAnimationFrame(animate);
+      group.rotation.y += 0.006;
+      group.rotation.x = Math.sin(Date.now() * 0.0008) * 0.05;
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    return () => {
+      cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+      renderer.dispose();
+      mount.removeChild(renderer.domElement);
+    };
+  }, [condition, selectedSurfaces, tooth]);
+
+  return <div className="tooth-3d-canvas" ref={mountRef} role="img" aria-label={`3D rendering of tooth ${tooth}`} />;
+}
+
+function Control({ label, value }: { label: string; value: string }) {
+  return (
+    <label>
+      <span>{label}</span>
+      <input type="range" min="-10" max="10" defaultValue="0" />
+      <strong>{value}</strong>
+    </label>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="clinical-metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function seedChartEntries(patient: Patient): ChartEntry[] {
+  return patient.toothFindings.map((finding, index) => {
+    const procedure = buildProcedure(finding.condition, finding.tooth, normalizeSurfaces(finding.surface));
+    return {
+      id: `${patient.id}-finding-${index}`,
+      tooth: finding.tooth,
+      surfaces: normalizeSurfaces(finding.surface),
+      condition: finding.condition,
+      status: finding.condition === "watch" ? "Watch" : finding.condition === "restoration" ? "Existing" : "Planned",
+      code: procedure.code,
+      description: procedure.description,
+      fee: finding.condition === "watch" || finding.condition === "restoration" ? 0 : procedure.fee,
+      note: finding.note,
+      provider: patient.provider,
+      createdAt: "Seed"
+    };
+  });
+}
+
+function normalizeSurfaces(surfaceText: string): ToothSurface[] {
+  const normalized = surfaceText.toUpperCase().split("").filter((surface): surface is ToothSurface => surfaces.includes(surface as ToothSurface));
+  return normalized.length > 0 ? Array.from(new Set(normalized)) : ["O"];
+}
+
+function buildProcedure(condition: ToothCondition, tooth: number, selectedSurfaces: ToothSurface[]): ProcedureLine {
+  const surfaceCount = selectedSurfaces.length;
+  if (condition === "crown") return { code: "D2740", description: "Porcelain/ceramic crown", fee: 1280, category: "major", tooth: String(tooth) };
+  if (condition === "rct") return { code: "D3330", description: "Molar root canal therapy", fee: 1420, category: "major", tooth: String(tooth) };
+  if (condition === "watch") return { code: "WATCH", description: "Clinical watch note", fee: 0, category: "basic", tooth: String(tooth), surface: selectedSurfaces.join("") };
+  const code = surfaceCount <= 1 ? "D2391" : surfaceCount === 2 ? "D2392" : surfaceCount === 3 ? "D2393" : "D2394";
+  const description = `Posterior composite - ${surfaceCount} surface${surfaceCount > 1 ? "s" : ""}`;
+  return { code, description, fee: 185 + Math.max(surfaceCount - 1, 0) * 75, category: "basic", tooth: String(tooth), surface: selectedSurfaces.join("") };
+}
+
+function smartNote(condition: ToothCondition, tooth: number, selectedSurfaces: ToothSurface[], status: ChartStatus) {
+  const surfaceText = selectedSurfaces.join("");
+  if (condition === "watch") return `${status} watch on tooth #${tooth} ${surfaceText}. Re-evaluate at next recall with radiograph/photos as indicated.`;
+  if (condition === "crown") return `${status} crown on tooth #${tooth}. Existing structure and radiographic findings reviewed; provider to verify final narrative.`;
+  if (condition === "rct") return `${status} endodontic therapy on tooth #${tooth}. Symptoms, testing, and diagnostic imaging require provider confirmation.`;
+  return `${status} composite restoration charted on tooth #${tooth} ${surfaceText} for caries/restoration replacement. Provider reviewed surfaces and documentation.`;
+}
+
+function surfaceColor(condition: ToothCondition) {
+  const colors: Record<ToothCondition, string> = {
+    caries: "#e5484d",
+    restoration: "#3b82f6",
+    crown: "#c59d5f",
+    rct: "#8b5cf6",
+    implant: "#64748b",
+    missing: "#94a3b8",
+    watch: "#f59e0b"
+  };
+  return colors[condition];
+}
+
+function surfaceOffset(surface: ToothSurface) {
+  const offsets: Record<ToothSurface, { x: number; z: number; rotate: number }> = {
+    O: { x: 0, z: 0, rotate: 0 },
+    M: { x: -0.46, z: 0, rotate: 0.25 },
+    D: { x: 0.46, z: 0, rotate: -0.25 },
+    B: { x: 0, z: -0.4, rotate: 0 },
+    L: { x: 0, z: 0.4, rotate: 0 },
+    F: { x: 0, z: -0.52, rotate: 0 }
+  };
+  return offsets[surface];
+}
+
+function currency(value: number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
+}
