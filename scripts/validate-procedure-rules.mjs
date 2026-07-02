@@ -110,6 +110,38 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+const posteriorSurfaces = ["M", "O", "D", "B", "L", "R"];
+const anteriorSurfaces = ["M", "I", "D", "F", "L", "R"];
+
+function isAnteriorTooth(tooth) {
+  return (tooth >= 6 && tooth <= 11) || (tooth >= 22 && tooth <= 27);
+}
+
+function reconcileSurfacesForTooth(selected, tooth) {
+  const options = isAnteriorTooth(tooth) ? anteriorSurfaces : posteriorSurfaces;
+  const mapped = selected.map((surface) => {
+    if (isAnteriorTooth(tooth) && surface === "O") return "I";
+    if (isAnteriorTooth(tooth) && surface === "B") return "F";
+    if (!isAnteriorTooth(tooth) && surface === "I") return "O";
+    if (!isAnteriorTooth(tooth) && surface === "F") return "B";
+    return surface;
+  });
+  const filtered = mapped.filter((surface) => options.includes(surface));
+  return filtered.length > 0 ? Array.from(new Set(filtered)) : [options.includes("O") ? "O" : "I"];
+}
+
+function createSurfaceRecords({ tooth, surfaces, condition, status, code }) {
+  const coverage = condition === "crown" ? "full-coverage" : condition === "watch" ? "watch" : "surface";
+  return reconcileSurfacesForTooth(surfaces, tooth).map((surface) => ({
+    surface,
+    condition,
+    status,
+    coverage,
+    code,
+    material: condition === "crown" ? "ceramic" : "composite"
+  }));
+}
+
 const filling = validateProcedureSelection({
   procedureCode: findCode("D2393"),
   toothNumber: "19",
@@ -159,5 +191,34 @@ assert(command.surfaces.join("") === "MOD", "MOD filling command should capture 
 const extraction = parseChartCommand("extract 1, 16, 17, 32");
 assert(extraction.matchedCode?.code === "D7140", "Extraction command should map to extraction seed.");
 assert(extraction.toothNumbers.length === 4, "Extraction command should capture four teeth.");
+
+const posteriorRecords = createSurfaceRecords({
+  tooth: 19,
+  surfaces: ["M", "O", "D"],
+  condition: "caries",
+  status: "Planned",
+  code: "D2393"
+});
+assert(posteriorRecords.length === 3, "Posterior MOD filling should store three structured surface records.");
+assert(posteriorRecords.every((record) => record.coverage === "surface"), "Filling records should store surface coverage.");
+
+const anteriorRecords = createSurfaceRecords({
+  tooth: 8,
+  surfaces: ["M", "O", "B"],
+  condition: "caries",
+  status: "Planned",
+  code: "D2393"
+});
+assert(anteriorRecords.map((record) => record.surface).join("") === "MIF", "Anterior teeth should map O to I and B to F.");
+
+const crownRecords = createSurfaceRecords({
+  tooth: 30,
+  surfaces: ["M", "O", "D", "B", "L"],
+  condition: "crown",
+  status: "Planned",
+  code: "D2740"
+});
+assert(crownRecords.length === 5, "Crown coverage should store all coronal surface records.");
+assert(crownRecords.every((record) => record.coverage === "full-coverage"), "Crown records should store full-coverage metadata.");
 
 console.log("Procedure rule validation passed.");

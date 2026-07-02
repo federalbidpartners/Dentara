@@ -9,6 +9,9 @@ export type NotationSystem = "Universal" | "Palmer" | "FDI";
 export type Dentition = "Adult" | "Pediatric";
 export type ProcedureScope = "tooth" | "surface" | "quadrant" | "arch" | "full-mouth";
 export type TreatmentPlanStatus = "draft" | "proposed" | "accepted" | "scheduled" | "completed" | "billed" | "paid" | "denied" | "referred" | "declined";
+export type RestorationCoverage = "surface" | "full-coverage" | "root" | "missing-tooth" | "watch";
+export type RestorationMaterial = "composite" | "ceramic" | "porcelain-metal" | "amalgam" | "temporary" | "none";
+export type SurfaceExtent = "incipient" | "localized" | "moderate" | "extensive" | "full";
 
 export interface Patient {
   id: string;
@@ -244,6 +247,8 @@ export interface ChartEntry {
   id: string;
   tooth: number;
   surfaces: ToothSurface[];
+  surfaceRecords: DentalSurfaceRecord[];
+  coverage: RestorationCoverage;
   condition: ToothCondition;
   status: ChartStatus;
   code: string;
@@ -252,6 +257,20 @@ export interface ChartEntry {
   note: string;
   provider: string;
   createdAt: string;
+}
+
+export interface DentalSurfaceRecord {
+  surface: ToothSurface;
+  label: string;
+  condition: ToothCondition;
+  status: ChartStatus;
+  material: RestorationMaterial;
+  extent: SurfaceExtent;
+  coverage: RestorationCoverage;
+  code: string;
+  note: string;
+  source: "manual" | "command" | "ai-suggestion" | "seed";
+  chartedAt: string;
 }
 
 export interface CodeRecommendation {

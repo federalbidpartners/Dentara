@@ -28,6 +28,7 @@ import {
   ChartCommandResult,
   ChartEntry,
   ChartStatus,
+  DentalSurfaceRecord,
   Dentition,
   NotationSystem,
   Patient,
@@ -57,7 +58,9 @@ const upperTeeth = Array.from({ length: 16 }, (_, index) => index + 1);
 const lowerTeeth = Array.from({ length: 16 }, (_, index) => 32 - index);
 const pediatricUpperTeeth = Array.from({ length: 10 }, (_, index) => index + 1);
 const pediatricLowerTeeth = Array.from({ length: 10 }, (_, index) => 20 - index);
-const surfaces: ToothSurface[] = ["M", "O", "D", "B", "L", "R"];
+const posteriorSurfaces: ToothSurface[] = ["M", "O", "D", "B", "L", "R"];
+const anteriorSurfaces: ToothSurface[] = ["M", "I", "D", "F", "L", "R"];
+const allSurfaces: ToothSurface[] = ["M", "O", "I", "D", "B", "F", "L", "R"];
 const statusOptions: ChartStatus[] = ["Planned", "Existing", "Completed", "Watch", "Referred", "Declined", "Insurance Pending"];
 const conditionLabels: { key: ToothCondition; label: string }[] = [
   { key: "caries", label: "Caries" },
@@ -119,6 +122,7 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
   const estimate = getEstimateIQ(patient);
   const selectedEntries = chartEntries.filter((entry) => entry.tooth === selectedTooth);
   const selectedFinding = patient.toothFindings.find((finding) => finding.tooth === selectedTooth) ?? patient.toothFindings[0];
+  const visibleSurfaceOptions = surfaceOptionsForTooth(selectedTooth, dentition);
   const selectedProcedure = buildProcedure(activeProcedure.condition, selectedTooth, selectedSurfaces);
   const procedureSearchResults = searchProcedureCodes(procedureQuery || activeProcedure.label, 6);
   const smartSuggestions = suggestProcedureCodes({
@@ -179,6 +183,7 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
   function handleToothSelect(tooth: number, additive = false) {
     setSelectedTooth(tooth);
     setSelectedScope("surface");
+    setSelectedSurfaces((current) => reconcileSurfacesForTooth(current, tooth, dentition));
     setSelectedTeeth((current) => {
       if (!additive) return [tooth];
       if (current.includes(tooth)) {
@@ -220,6 +225,13 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
     });
   }
 
+  function applySurfacePreset(nextSurfaces: ToothSurface[], condition = activeProcedure.condition) {
+    setSelectedSurfaces(reconcileSurfacesForTooth(nextSurfaces, selectedTooth, dentition));
+    setSelectedCondition(condition);
+    const matchingTemplate = procedureTemplates.find((template) => template.condition === condition);
+    if (matchingTemplate) setActiveProcedure(matchingTemplate);
+  }
+
   function reviewCommand() {
     const result = parseChartCommand(commandText);
     setCommandResult(result);
@@ -241,7 +253,8 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
       condition: conditionFromCode(commandResult.matchedCode.code),
       surfaces: commandResult.surfaces.length > 0 ? commandResult.surfaces : selectedSurfaces,
       teeth: commandResult.toothNumbers.length > 0 ? commandResult.toothNumbers : selectedTeeth,
-      note: `${commandResult.note} Command reviewed by provider before saving.`
+      note: `${commandResult.note} Command reviewed by provider before saving.`,
+      source: "command"
     });
     setCommandResult(null);
   }
@@ -254,7 +267,8 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
       condition: conditionFromCode(suggestion.procedureCode.code),
       surfaces: suggestion.surfaces.length > 0 ? suggestion.surfaces : selectedSurfaces,
       teeth: suggestion.toothNumber ? [Number(suggestion.toothNumber)] : selectedTeeth,
-      note: `${suggestion.reason} Documentation: ${suggestion.documentation.join(", ") || "provider note"}.`
+      note: `${suggestion.reason} Documentation: ${suggestion.documentation.join(", ") || "provider note"}.`,
+      source: "ai-suggestion"
     });
   }
 
@@ -266,12 +280,23 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
     surfaces: ToothSurface[];
     teeth: number[];
     note: string;
+    source?: "manual" | "command" | "ai-suggestion";
   }) {
     const teeth = params.teeth.length > 0 ? params.teeth : [selectedTooth];
     const entries = teeth.map<ChartEntry>((tooth, index) => ({
       id: `chart-${Date.now()}-${tooth}-${index}`,
       tooth,
-      surfaces: params.surfaces,
+      surfaces: reconcileSurfacesForTooth(params.surfaces, tooth, dentition),
+      surfaceRecords: createSurfaceRecords({
+        tooth,
+        surfaces: reconcileSurfacesForTooth(params.surfaces, tooth, dentition),
+        condition: params.condition,
+        status: selectedStatus,
+        code: params.code,
+        note: noteDraft || params.note,
+        source: params.source ?? "manual"
+      }),
+      coverage: coverageForCondition(params.condition),
       condition: params.condition,
       status: selectedStatus,
       code: params.code,
@@ -289,16 +314,28 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
 
   function applyProcedure(template = activeProcedure) {
     const procedure = buildProcedure(template.condition, selectedTooth, selectedSurfaces);
+    const surfacesForEntry = reconcileSurfacesForTooth(selectedSurfaces, selectedTooth, dentition);
+    const note = noteDraft || smartNote(template.condition, selectedTooth, surfacesForEntry, selectedStatus);
     const entry: ChartEntry = {
       id: `chart-${Date.now()}`,
       tooth: selectedTooth,
-      surfaces: selectedSurfaces,
+      surfaces: surfacesForEntry,
+      surfaceRecords: createSurfaceRecords({
+        tooth: selectedTooth,
+        surfaces: surfacesForEntry,
+        condition: template.condition,
+        status: selectedStatus,
+        code: procedure.code,
+        note,
+        source: "manual"
+      }),
+      coverage: coverageForCondition(template.condition),
       condition: template.condition,
       status: selectedStatus,
       code: procedure.code,
       description: procedure.description,
       fee: procedure.fee,
-      note: noteDraft || smartNote(template.condition, selectedTooth, selectedSurfaces, selectedStatus),
+      note,
       provider: patient.provider,
       createdAt: "Today"
     };
@@ -352,7 +389,14 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
             <div className="odontogram-toolbar">
               <label>
                 <span>Dentition</span>
-                <select value={dentition} onChange={(event) => setDentition(event.target.value as Dentition)}>
+                <select
+                  value={dentition}
+                  onChange={(event) => {
+                    const nextDentition = event.target.value as Dentition;
+                    setDentition(nextDentition);
+                    setSelectedSurfaces((current) => reconcileSurfacesForTooth(current, selectedTooth, nextDentition));
+                  }}
+                >
                   <option>Adult</option>
                   <option>Pediatric</option>
                 </select>
@@ -396,17 +440,36 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
             </div>
             <div className="surface-row surface-builder">
               <strong>#{convertToNotation(selectedTooth, notationSystem, dentition)} · {selectedTeeth.length} selected</strong>
-              {surfaces.map((surface) => (
+              {visibleSurfaceOptions.map((surface) => (
                 <button className={selectedSurfaces.includes(surface) ? "active" : ""} key={surface} onClick={() => toggleSurface(surface)}>
-                  {surface}
+                  {surface}<small>{surfaceLabel(surface)}</small>
                 </button>
               ))}
             </div>
+            <div className="surface-preset-row">
+              <button onClick={() => applySurfacePreset(["M", isAnteriorTooth(selectedTooth, dentition) ? "I" : "O"], "caries")}>MO/MI</button>
+              <button onClick={() => applySurfacePreset(["D", isAnteriorTooth(selectedTooth, dentition) ? "I" : "O"], "caries")}>DO/DI</button>
+              <button onClick={() => applySurfacePreset(["M", isAnteriorTooth(selectedTooth, dentition) ? "I" : "O", "D"], "caries")}>MOD/MID</button>
+              <button onClick={() => applySurfacePreset(["B"], "caries")}>Buccal/Facial</button>
+              <button onClick={() => applySurfacePreset(fullCoverageSurfaces(selectedTooth, dentition), "crown")}>Crown coverage</button>
+              <button onClick={() => applySurfacePreset(["R"], "rct")}>Root</button>
+            </div>
             <SurfaceMap
+              tooth={selectedTooth}
+              dentition={dentition}
               selectedSurfaces={selectedSurfaces}
               condition={selectedCondition}
               entries={selectedEntries}
+              status={selectedStatus}
               onSurfaceClick={toggleSurface}
+            />
+            <StructuredSurfacePreview
+              tooth={selectedTooth}
+              surfaces={selectedSurfaces}
+              condition={selectedCondition}
+              status={selectedStatus}
+              code={selectedProcedure.code}
+              dentition={dentition}
             />
             <div className="finding-summary">
               <RiskChip risk={selectedFinding?.severity ?? "Low"} />
@@ -815,33 +878,40 @@ function ModernOdontogram({
           const finding = findings.find((item) => item.tooth === tooth);
           const entry = entries.find((item) => item.tooth === tooth);
           const condition = entry?.condition ?? finding?.condition ?? "watch";
+          const surfaceOptions = surfaceOptionsForTooth(tooth, dentition);
+          const chartedRecords = new Map((entry?.surfaceRecords ?? []).map((record) => [record.surface, record]));
           const chartedSurfaces = new Set(entry?.surfaces ?? []);
           const selected = selectedTeeth.includes(tooth);
           return (
-            <button
+            <div
               className={`modern-tooth ${condition} ${selected ? "selected" : ""} ${selectedTooth === tooth ? "focused" : ""}`}
               key={tooth}
-              onClick={(event) => onSelectTooth(tooth, event.shiftKey)}
-              aria-label={`Tooth ${convertToNotation(tooth, notationSystem, dentition)}`}
             >
-              <span className="tooth-label">{convertToNotation(tooth, notationSystem, dentition)}</span>
+              <button
+                className="tooth-select-button"
+                onClick={(event) => onSelectTooth(tooth, event.shiftKey)}
+                aria-label={`Select tooth ${convertToNotation(tooth, notationSystem, dentition)}`}
+              >
+                <span className="tooth-label">{convertToNotation(tooth, notationSystem, dentition)}</span>
+              </button>
               <span className="tooth-surfaces" aria-hidden="true">
-                {surfaces.map((surface) => (
-                  <i
-                    className={`mini-surface ${surface.toLowerCase()} ${chartedSurfaces.has(surface) ? "charted" : ""} ${selected && selectedSurfaces.includes(surface) ? "active" : ""}`}
+                {surfaceOptions.map((surface) => (
+                  <button
+                    className={`mini-surface ${surface.toLowerCase()} ${chartedSurfaces.has(surface) ? `charted ${chartedRecords.get(surface)?.condition ?? condition}` : ""} ${selected && selectedSurfaces.includes(surface) ? "active" : ""}`}
                     key={surface}
                     onClick={(event) => {
                       event.stopPropagation();
                       onSelectTooth(tooth);
                       onSurfaceClick(surface);
                     }}
+                    aria-label={`Select ${surfaceLabel(surface)} surface on tooth ${convertToNotation(tooth, notationSystem, dentition)}`}
                   >
                     {surface}
-                  </i>
+                  </button>
                 ))}
               </span>
               {(finding || entry) && <b>{entry?.code ?? finding?.condition}</b>}
-            </button>
+            </div>
           );
         })}
       </div>
@@ -904,31 +974,86 @@ function ToothArch({
 }
 
 function SurfaceMap({
+  tooth,
+  dentition,
   selectedSurfaces,
   condition,
   entries,
+  status,
   onSurfaceClick
 }: {
+  tooth: number;
+  dentition: Dentition;
   selectedSurfaces: ToothSurface[];
   condition: ToothCondition;
   entries: ChartEntry[];
+  status: ChartStatus;
   onSurfaceClick: (surface: ToothSurface) => void;
 }) {
+  const visibleSurfaces = surfaceOptionsForTooth(tooth, dentition);
+  const surfaceRecords = new Map(entries.flatMap((entry) => entry.surfaceRecords ?? []).map((record) => [record.surface, record]));
   return (
     <div className="surface-map" aria-label="Clickable tooth surfaces">
-      {surfaces.map((surface) => {
-        const charted = entries.find((entry) => entry.surfaces.includes(surface));
+      {visibleSurfaces.map((surface) => {
+        const chartedRecord = surfaceRecords.get(surface);
+        const legacyEntry = entries.find((entry) => entry.surfaces.includes(surface));
+        const chartedCondition = chartedRecord?.condition ?? legacyEntry?.condition;
         return (
           <button
-            className={`${surface.toLowerCase()} ${selectedSurfaces.includes(surface) ? "active" : ""} ${charted?.condition ?? condition}`}
+            className={`${surface.toLowerCase()} ${selectedSurfaces.includes(surface) ? "active" : ""} ${chartedCondition ?? condition}`}
             key={surface}
             onClick={() => onSurfaceClick(surface)}
-            title={`${surface} surface`}
+            title={`${surfaceLabel(surface)} surface`}
           >
-            {surface}
+            <strong>{surface}</strong>
+            <span>{surfaceLabel(surface)}</span>
+            {selectedSurfaces.includes(surface) && <small>{status}</small>}
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function StructuredSurfacePreview({
+  tooth,
+  surfaces: selectedSurfaces,
+  condition,
+  status,
+  code,
+  dentition
+}: {
+  tooth: number;
+  surfaces: ToothSurface[];
+  condition: ToothCondition;
+  status: ChartStatus;
+  code: string;
+  dentition: Dentition;
+}) {
+  const records = createSurfaceRecords({
+    tooth,
+    surfaces: reconcileSurfacesForTooth(selectedSurfaces, tooth, dentition),
+    condition,
+    status,
+    code,
+    note: "Draft surface selection",
+    source: "manual"
+  });
+
+  return (
+    <div className="structured-surface-preview">
+      <div>
+        <span>Structured chart data</span>
+        <strong>{records.length} surface record{records.length === 1 ? "" : "s"} ready</strong>
+      </div>
+      <div className="surface-record-grid">
+        {records.map((record) => (
+          <span className={`surface-record ${record.condition}`} key={`${record.surface}-${record.condition}`}>
+            <b>{record.surface}</b>
+            {record.label} · {record.condition} · {record.coverage}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1042,16 +1167,29 @@ function Metric({ label, value }: { label: string; value: string }) {
 function seedChartEntries(patient: Patient): ChartEntry[] {
   return patient.toothFindings.map((finding, index) => {
     const procedure = buildProcedure(finding.condition, finding.tooth, normalizeSurfaces(finding.surface));
+    const normalizedSurfaces = reconcileSurfacesForTooth(normalizeSurfaces(finding.surface), finding.tooth, "Adult");
+    const status: ChartStatus = finding.condition === "watch" ? "Watch" : finding.condition === "restoration" ? "Existing" : "Planned";
+    const note = finding.note;
     return {
       id: `${patient.id}-finding-${index}`,
       tooth: finding.tooth,
-      surfaces: normalizeSurfaces(finding.surface),
+      surfaces: normalizedSurfaces,
+      surfaceRecords: createSurfaceRecords({
+        tooth: finding.tooth,
+        surfaces: normalizedSurfaces,
+        condition: finding.condition,
+        status,
+        code: procedure.code,
+        note,
+        source: "seed"
+      }),
+      coverage: coverageForCondition(finding.condition),
       condition: finding.condition,
-      status: finding.condition === "watch" ? "Watch" : finding.condition === "restoration" ? "Existing" : "Planned",
+      status,
       code: procedure.code,
       description: procedure.description,
       fee: finding.condition === "watch" || finding.condition === "restoration" ? 0 : procedure.fee,
-      note: finding.note,
+      note,
       provider: patient.provider,
       createdAt: "Seed"
     };
@@ -1059,8 +1197,96 @@ function seedChartEntries(patient: Patient): ChartEntry[] {
 }
 
 function normalizeSurfaces(surfaceText: string): ToothSurface[] {
-  const normalized = surfaceText.toUpperCase().split("").filter((surface): surface is ToothSurface => surfaces.includes(surface as ToothSurface));
+  if (/all|full/i.test(surfaceText)) return ["M", "O", "D", "B", "L"];
+  const normalized = surfaceText.toUpperCase().split("").filter((surface): surface is ToothSurface => allSurfaces.includes(surface as ToothSurface));
   return normalized.length > 0 ? Array.from(new Set(normalized)) : ["O"];
+}
+
+function isAnteriorTooth(tooth: number, dentition: Dentition) {
+  if (dentition === "Pediatric") return (tooth >= 3 && tooth <= 8) || (tooth >= 13 && tooth <= 18);
+  return (tooth >= 6 && tooth <= 11) || (tooth >= 22 && tooth <= 27);
+}
+
+function surfaceOptionsForTooth(tooth: number, dentition: Dentition): ToothSurface[] {
+  return isAnteriorTooth(tooth, dentition) ? anteriorSurfaces : posteriorSurfaces;
+}
+
+function reconcileSurfacesForTooth(selected: ToothSurface[], tooth: number, dentition: Dentition): ToothSurface[] {
+  const options = surfaceOptionsForTooth(tooth, dentition);
+  const mapped = selected.map<ToothSurface>((surface) => {
+    if (isAnteriorTooth(tooth, dentition) && surface === "O") return "I";
+    if (isAnteriorTooth(tooth, dentition) && surface === "B") return "F";
+    if (!isAnteriorTooth(tooth, dentition) && surface === "I") return "O";
+    if (!isAnteriorTooth(tooth, dentition) && surface === "F") return "B";
+    return surface;
+  });
+  const filtered = mapped.filter((surface): surface is ToothSurface => options.includes(surface as ToothSurface));
+  return filtered.length > 0 ? Array.from(new Set(filtered)) : [options.includes("O") ? "O" : "I"];
+}
+
+function fullCoverageSurfaces(tooth: number, dentition: Dentition) {
+  return surfaceOptionsForTooth(tooth, dentition).filter((surface) => surface !== "R");
+}
+
+function surfaceLabel(surface: ToothSurface) {
+  const labels: Record<ToothSurface, string> = {
+    M: "Mesial",
+    O: "Occlusal",
+    I: "Incisal",
+    D: "Distal",
+    B: "Buccal",
+    F: "Facial",
+    L: "Lingual",
+    R: "Root"
+  };
+  return labels[surface];
+}
+
+function createSurfaceRecords(params: {
+  tooth: number;
+  surfaces: ToothSurface[];
+  condition: ToothCondition;
+  status: ChartStatus;
+  code: string;
+  note: string;
+  source: "manual" | "command" | "ai-suggestion" | "seed";
+}): DentalSurfaceRecord[] {
+  const coverage = coverageForCondition(params.condition);
+  return params.surfaces.map((surface) => ({
+    surface,
+    label: surfaceLabel(surface),
+    condition: params.condition,
+    status: params.status,
+    material: materialForCondition(params.condition, params.code),
+    extent: extentForCondition(params.condition, params.surfaces.length),
+    coverage: surface === "R" ? "root" : coverage,
+    code: params.code,
+    note: params.note,
+    source: params.source,
+    chartedAt: "Today"
+  }));
+}
+
+function coverageForCondition(condition: ToothCondition) {
+  if (condition === "crown") return "full-coverage";
+  if (condition === "missing") return "missing-tooth";
+  if (condition === "watch") return "watch";
+  if (condition === "rct") return "root";
+  return "surface";
+}
+
+function materialForCondition(condition: ToothCondition, code: string) {
+  if (condition === "crown") return code === "D2750" ? "porcelain-metal" : "ceramic";
+  if (condition === "restoration" || condition === "caries") return "composite";
+  return "none";
+}
+
+function extentForCondition(condition: ToothCondition, surfaceCount: number) {
+  if (condition === "crown" || condition === "missing") return "full";
+  if (condition === "watch") return "incipient";
+  if (surfaceCount >= 4) return "extensive";
+  if (surfaceCount >= 2) return "moderate";
+  return "localized";
 }
 
 function buildProcedure(condition: ToothCondition, tooth: number, selectedSurfaces: ToothSurface[]): ProcedureLine {
