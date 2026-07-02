@@ -7,6 +7,8 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Copy,
+  CornerUpLeft,
+  CornerUpRight,
   FilePlus2,
   Image as ImageIcon,
   Layers3,
@@ -22,7 +24,28 @@ import {
 } from "lucide-react";
 import * as THREE from "three";
 import { getAttachmentChecklist, getClinicalAiSuggestions, getCodeAdvisor, getDiagnosticAssist, getEstimateIQ, getImagingFindings, getNarrativeDraft } from "../lib/engines";
-import { ChartEntry, ChartStatus, Patient, ProcedureLine, ToothCondition, ToothFinding, ToothSurface } from "../lib/types";
+import {
+  ChartCommandResult,
+  ChartEntry,
+  ChartStatus,
+  Dentition,
+  NotationSystem,
+  Patient,
+  ProcedureLine,
+  ProcedureScope,
+  SmartProcedureSuggestion,
+  ToothCondition,
+  ToothFinding,
+  ToothSurface
+} from "../lib/types";
+import {
+  convertToNotation,
+  parseChartCommand,
+  procedureCodes,
+  searchProcedureCodes,
+  suggestProcedureCodes,
+  validateProcedureSelection
+} from "../lib/procedureCatalog";
 import { ConfidenceChip, RiskChip } from "./StatusChip";
 
 interface ClinicalWorkspaceProps {
@@ -32,8 +55,10 @@ interface ClinicalWorkspaceProps {
 
 const upperTeeth = Array.from({ length: 16 }, (_, index) => index + 1);
 const lowerTeeth = Array.from({ length: 16 }, (_, index) => 32 - index);
-const surfaces: ToothSurface[] = ["O", "M", "D", "B", "L", "F"];
-const statusOptions: ChartStatus[] = ["Planned", "Existing", "Completed", "Watch"];
+const pediatricUpperTeeth = Array.from({ length: 10 }, (_, index) => index + 1);
+const pediatricLowerTeeth = Array.from({ length: 10 }, (_, index) => 20 - index);
+const surfaces: ToothSurface[] = ["M", "O", "D", "B", "L", "R"];
+const statusOptions: ChartStatus[] = ["Planned", "Existing", "Completed", "Watch", "Referred", "Declined", "Insurance Pending"];
 const conditionLabels: { key: ToothCondition; label: string }[] = [
   { key: "caries", label: "Caries" },
   { key: "restoration", label: "Restoration" },
@@ -53,19 +78,36 @@ const procedureTemplates = [
 
 export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspaceProps) {
   const seededEntries = useMemo(() => seedChartEntries(patient), [patient]);
+  const initialTooth = Number(patient.plannedProcedure.tooth ?? patient.toothFindings[0]?.tooth ?? 14);
   const [chartEntries, setChartEntries] = useState<ChartEntry[]>(seededEntries);
-  const [selectedTooth, setSelectedTooth] = useState(Number(patient.plannedProcedure.tooth ?? patient.toothFindings[0]?.tooth ?? 14));
+  const [chartHistory, setChartHistory] = useState<ChartEntry[][]>([]);
+  const [redoStack, setRedoStack] = useState<ChartEntry[][]>([]);
+  const [selectedTooth, setSelectedTooth] = useState(initialTooth);
+  const [selectedTeeth, setSelectedTeeth] = useState<number[]>([initialTooth]);
   const [selectedSurfaces, setSelectedSurfaces] = useState<ToothSurface[]>(normalizeSurfaces(patient.plannedProcedure.surface ?? patient.toothFindings[0]?.surface ?? "O"));
   const [selectedCondition, setSelectedCondition] = useState<ToothCondition>("caries");
   const [selectedStatus, setSelectedStatus] = useState<ChartStatus>("Planned");
+  const [selectedScope, setSelectedScope] = useState<ProcedureScope>("surface");
+  const [notationSystem, setNotationSystem] = useState<NotationSystem>("Universal");
+  const [dentition, setDentition] = useState<Dentition>("Adult");
+  const [commandText, setCommandText] = useState("MOD filling #19");
+  const [commandResult, setCommandResult] = useState<ChartCommandResult | null>(null);
+  const [procedureQuery, setProcedureQuery] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
   const [activeProcedure, setActiveProcedure] = useState(procedureTemplates[0]);
 
   useEffect(() => {
+    const nextTooth = Number(patient.plannedProcedure.tooth ?? patient.toothFindings[0]?.tooth ?? 14);
     setChartEntries(seededEntries);
-    setSelectedTooth(Number(patient.plannedProcedure.tooth ?? patient.toothFindings[0]?.tooth ?? 14));
+    setChartHistory([]);
+    setRedoStack([]);
+    setSelectedTooth(nextTooth);
+    setSelectedTeeth([nextTooth]);
     setSelectedSurfaces(normalizeSurfaces(patient.plannedProcedure.surface ?? patient.toothFindings[0]?.surface ?? "O"));
     setSelectedCondition(patient.toothFindings[0]?.condition ?? "caries");
+    setSelectedScope("surface");
+    setCommandResult(null);
+    setProcedureQuery("");
     setNoteDraft("");
   }, [patient, seededEntries]);
 
@@ -78,6 +120,25 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
   const selectedEntries = chartEntries.filter((entry) => entry.tooth === selectedTooth);
   const selectedFinding = patient.toothFindings.find((finding) => finding.tooth === selectedTooth) ?? patient.toothFindings[0];
   const selectedProcedure = buildProcedure(activeProcedure.condition, selectedTooth, selectedSurfaces);
+  const procedureSearchResults = searchProcedureCodes(procedureQuery || activeProcedure.label, 6);
+  const smartSuggestions = suggestProcedureCodes({
+    toothNumber: selectedScope === "full-mouth" ? undefined : selectedTooth,
+    surfaces: selectedSurfaces,
+    scope: selectedScope,
+    phrase: procedureQuery || commandText || activeProcedure.label,
+    attachments: patient.attachments,
+    clinicalNotes: noteDraft
+  });
+  const selectedCatalogCode = smartSuggestions[0]?.procedureCode ?? procedureSearchResults[0] ?? procedureCodes[0];
+  const activeValidation = validateProcedureSelection({
+    procedureCode: selectedCatalogCode,
+    toothNumber: selectedScope === "full-mouth" ? undefined : String(selectedTooth),
+    surfaces: selectedSurfaces,
+    scope: selectedCatalogCode.requiresSurface ? "surface" : selectedScope,
+    serviceDate: "2026-07-02",
+    attachments: patient.attachments,
+    clinicalNotes: noteDraft
+  });
   const treatmentQueue = useMemo(() => {
     const plannedChartLines = chartEntries
       .filter((entry) => entry.status === "Planned" && entry.fee > 0)
@@ -93,6 +154,62 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
   }, [chartEntries, patient.plannedProcedure]);
   const treatmentQueueTotal = treatmentQueue.reduce((sum, procedure) => sum + procedure.fee, 0);
 
+  function setChartEntriesWithHistory(nextEntries: ChartEntry[]) {
+    setChartHistory((current) => [chartEntries, ...current].slice(0, 20));
+    setRedoStack([]);
+    setChartEntries(nextEntries);
+  }
+
+  function undoChart() {
+    const [previous, ...rest] = chartHistory;
+    if (!previous) return;
+    setRedoStack((current) => [chartEntries, ...current].slice(0, 20));
+    setChartHistory(rest);
+    setChartEntries(previous);
+  }
+
+  function redoChart() {
+    const [next, ...rest] = redoStack;
+    if (!next) return;
+    setChartHistory((current) => [chartEntries, ...current].slice(0, 20));
+    setRedoStack(rest);
+    setChartEntries(next);
+  }
+
+  function handleToothSelect(tooth: number, additive = false) {
+    setSelectedTooth(tooth);
+    setSelectedScope("surface");
+    setSelectedTeeth((current) => {
+      if (!additive) return [tooth];
+      if (current.includes(tooth)) {
+        const next = current.filter((item) => item !== tooth);
+        return next.length > 0 ? next : [tooth];
+      }
+      return [...current, tooth].sort((a, b) => a - b);
+    });
+  }
+
+  function selectScope(scope: ProcedureScope, scopeId?: string) {
+    setSelectedScope(scope);
+    if (scope === "full-mouth") {
+      setSelectedTeeth(dentition === "Adult" ? [...upperTeeth, ...lowerTeeth].sort((a, b) => a - b) : [...pediatricUpperTeeth, ...pediatricLowerTeeth].sort((a, b) => a - b));
+      return;
+    }
+    if (scope === "quadrant" && scopeId) {
+      const teeth = quadrantTeeth(scopeId, dentition);
+      setSelectedTeeth(teeth);
+      setSelectedTooth(teeth[0] ?? selectedTooth);
+      return;
+    }
+    if (scope === "arch" && scopeId) {
+      const teeth = archTeeth(scopeId, dentition);
+      setSelectedTeeth(teeth);
+      setSelectedTooth(teeth[0] ?? selectedTooth);
+      return;
+    }
+    setSelectedTeeth([selectedTooth]);
+  }
+
   function toggleSurface(surface: ToothSurface) {
     setSelectedSurfaces((current) => {
       if (current.includes(surface)) {
@@ -101,6 +218,73 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
       }
       return [...current, surface];
     });
+  }
+
+  function reviewCommand() {
+    const result = parseChartCommand(commandText);
+    setCommandResult(result);
+    if (result.toothNumbers.length > 0) {
+      setSelectedTooth(result.toothNumbers[0]);
+      setSelectedTeeth(result.toothNumbers);
+    }
+    if (result.surfaces.length > 0) setSelectedSurfaces(result.surfaces);
+    if (result.scope) setSelectedScope(result.scope);
+    if (result.matchedCode) setProcedureQuery(result.matchedCode.code);
+  }
+
+  function acceptCommandResult() {
+    if (!commandResult?.matchedCode || commandResult.errors.length > 0) return;
+    addProcedureEntries({
+      code: commandResult.matchedCode.code,
+      description: commandResult.matchedCode.plainEnglishDescription,
+      fee: commandResult.matchedCode.defaultFee,
+      condition: conditionFromCode(commandResult.matchedCode.code),
+      surfaces: commandResult.surfaces.length > 0 ? commandResult.surfaces : selectedSurfaces,
+      teeth: commandResult.toothNumbers.length > 0 ? commandResult.toothNumbers : selectedTeeth,
+      note: `${commandResult.note} Command reviewed by provider before saving.`
+    });
+    setCommandResult(null);
+  }
+
+  function applySmartSuggestion(suggestion: SmartProcedureSuggestion) {
+    addProcedureEntries({
+      code: suggestion.procedureCode.code,
+      description: suggestion.procedureCode.plainEnglishDescription,
+      fee: suggestion.procedureCode.defaultFee,
+      condition: conditionFromCode(suggestion.procedureCode.code),
+      surfaces: suggestion.surfaces.length > 0 ? suggestion.surfaces : selectedSurfaces,
+      teeth: suggestion.toothNumber ? [Number(suggestion.toothNumber)] : selectedTeeth,
+      note: `${suggestion.reason} Documentation: ${suggestion.documentation.join(", ") || "provider note"}.`
+    });
+  }
+
+  function addProcedureEntries(params: {
+    code: string;
+    description: string;
+    fee: number;
+    condition: ToothCondition;
+    surfaces: ToothSurface[];
+    teeth: number[];
+    note: string;
+  }) {
+    const teeth = params.teeth.length > 0 ? params.teeth : [selectedTooth];
+    const entries = teeth.map<ChartEntry>((tooth, index) => ({
+      id: `chart-${Date.now()}-${tooth}-${index}`,
+      tooth,
+      surfaces: params.surfaces,
+      condition: params.condition,
+      status: selectedStatus,
+      code: params.code,
+      description: params.description,
+      fee: params.fee,
+      note: noteDraft || params.note,
+      provider: patient.provider,
+      createdAt: "Today"
+    }));
+    setSelectedCondition(params.condition);
+    setChartEntriesWithHistory([...entries, ...chartEntries]);
+    setNoteDraft("");
+    onCreateTask(`${selectedStatus} ${params.description} on ${teeth.map((tooth) => `#${tooth}`).join(", ")} ${params.surfaces.join("")}`);
   }
 
   function applyProcedure(template = activeProcedure) {
@@ -120,7 +304,7 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
     };
     setSelectedCondition(template.condition);
     setActiveProcedure(template);
-    setChartEntries((current) => [entry, ...current]);
+    setChartEntriesWithHistory([entry, ...chartEntries]);
     setNoteDraft("");
     onCreateTask(`${selectedStatus} ${procedure.description} on #${selectedTooth} ${selectedSurfaces.join("")}`);
   }
@@ -162,18 +346,56 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
         <div className="clinical-left">
           <article className="clinical-card tooth-card">
             <div className="clinical-heading">
-              <h3>Surface-Level Odontogram</h3>
-              <span>Click tooth, then surface</span>
+              <h3>Advanced Odontogram</h3>
+              <span>Tooth, surface, quadrant, arch, or full-mouth</span>
             </div>
-            <ToothArch teeth={upperTeeth} entries={chartEntries} findings={patient.toothFindings} selectedTooth={selectedTooth} onSelect={setSelectedTooth} arch="upper" />
-            <ToothArch teeth={lowerTeeth} entries={chartEntries} findings={patient.toothFindings} selectedTooth={selectedTooth} onSelect={setSelectedTooth} arch="lower" />
+            <div className="odontogram-toolbar">
+              <label>
+                <span>Dentition</span>
+                <select value={dentition} onChange={(event) => setDentition(event.target.value as Dentition)}>
+                  <option>Adult</option>
+                  <option>Pediatric</option>
+                </select>
+              </label>
+              <label>
+                <span>Notation</span>
+                <select value={notationSystem} onChange={(event) => setNotationSystem(event.target.value as NotationSystem)}>
+                  <option>Universal</option>
+                  <option>Palmer</option>
+                  <option>FDI</option>
+                </select>
+              </label>
+              <button onClick={undoChart} disabled={chartHistory.length === 0} title="Undo charting change"><CornerUpLeft size={14} />Undo</button>
+              <button onClick={redoChart} disabled={redoStack.length === 0} title="Redo charting change"><CornerUpRight size={14} />Redo</button>
+            </div>
+            <ModernOdontogram
+              dentition={dentition}
+              notationSystem={notationSystem}
+              entries={chartEntries}
+              findings={patient.toothFindings}
+              selectedTeeth={selectedTeeth}
+              selectedTooth={selectedTooth}
+              selectedSurfaces={selectedSurfaces}
+              onSelectTooth={handleToothSelect}
+              onSurfaceClick={toggleSurface}
+            />
             <div className="tooth-legend">
               {conditionLabels.map((item) => (
                 <span key={item.key}><i className={`condition-dot ${item.key}`} />{item.label}</span>
               ))}
             </div>
+            <div className="scope-row">
+              <button className={selectedScope === "tooth" ? "active" : ""} onClick={() => selectScope("tooth")}>Tooth</button>
+              {["UR", "UL", "LL", "LR"].map((quadrant) => (
+                <button key={quadrant} onClick={() => selectScope("quadrant", quadrant)}>Q {quadrant}</button>
+              ))}
+              {["Upper", "Lower"].map((arch) => (
+                <button key={arch} onClick={() => selectScope("arch", arch)}>{arch}</button>
+              ))}
+              <button className={selectedScope === "full-mouth" ? "active" : ""} onClick={() => selectScope("full-mouth")}>Full Mouth</button>
+            </div>
             <div className="surface-row surface-builder">
-              <strong>Tooth {selectedTooth}</strong>
+              <strong>#{convertToNotation(selectedTooth, notationSystem, dentition)} · {selectedTeeth.length} selected</strong>
               {surfaces.map((surface) => (
                 <button className={selectedSurfaces.includes(surface) ? "active" : ""} key={surface} onClick={() => toggleSurface(surface)}>
                   {surface}
@@ -190,6 +412,32 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
               <RiskChip risk={selectedFinding?.severity ?? "Low"} />
               <span>{selectedFinding?.note ?? "No active chart finding on this tooth."}</span>
             </div>
+            <div className="shortcut-strip">
+              <span>Shift-click teeth for multi-select</span>
+              <span>Root = R</span>
+              <span>Codes validate before claim handoff</span>
+            </div>
+          </article>
+
+          <article className="clinical-card chart-command-card">
+            <div className="clinical-heading">
+              <h3><Sparkles size={16} />Natural-Language Charting</h3>
+              <button onClick={reviewCommand}>Review command</button>
+            </div>
+            <div className="command-bar">
+              <input value={commandText} onChange={(event) => setCommandText(event.target.value)} placeholder="Try: MOD filling #19 or extract 1, 16, 17, 32" />
+              <button onClick={reviewCommand}><Wand2 size={14} />Parse</button>
+            </div>
+            {commandResult && (
+              <div className={`command-review ${commandResult.errors.length ? "blocked" : "ready"}`}>
+                <div>
+                  <strong>{commandResult.matchedCode?.code ?? "Needs review"}</strong>
+                  <span>{commandResult.note}</span>
+                  {commandResult.errors.map((error) => <small key={error}>{error}</small>)}
+                </div>
+                <button onClick={acceptCommandResult} disabled={!commandResult.matchedCode || commandResult.errors.length > 0}>Accept draft</button>
+              </div>
+            )}
           </article>
 
           <article className="clinical-card note-builder-card">
@@ -305,6 +553,24 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
                 ))}
               </ul>
             </div>
+            <div className="smart-planner-card">
+              <div className="readiness-meter">
+                <span>Claim readiness</span>
+                <strong>{activeValidation.claimReadinessScore}%</strong>
+                <i style={{ width: `${activeValidation.claimReadinessScore}%` }} />
+              </div>
+              {smartSuggestions.slice(0, 3).map((suggestion) => (
+                <div className="smart-suggestion-card" key={suggestion.id}>
+                  <div>
+                    <strong>{suggestion.procedureCode.code} · {suggestion.procedureCode.plainEnglishDescription}</strong>
+                    <span>{suggestion.reason}</span>
+                    <small>{suggestion.documentation.join(" · ")}</small>
+                  </div>
+                  <ConfidenceChip confidence={suggestion.confidence} />
+                  <button onClick={() => applySmartSuggestion(suggestion)}>Add draft</button>
+                </div>
+              ))}
+            </div>
             <div className="ai-suggestion-list">
               {aiSuggestions.slice(0, 4).map((suggestion) => (
                 <div className="ai-suggestion" key={suggestion.id}>
@@ -370,11 +636,15 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
               <button onClick={() => onCreateTask(`Review tooth #${selectedTooth} clinical chart`)}><Save size={14} />Review</button>
             </div>
             <div className="tooth-inspector-hero">
-              <span>#{selectedTooth}</span>
+              <span>#{convertToNotation(selectedTooth, notationSystem, dentition)}</span>
               <div>
                 <strong>{selectedEntries.length} charted items</strong>
-                <small>{selectedSurfaces.join("")} selected · {selectedStatus}</small>
+                <small>{selectedScope} · {selectedTeeth.length} teeth · {selectedSurfaces.join("")} selected</small>
               </div>
+            </div>
+            <div className="selection-summary">
+              <span>Selected teeth</span>
+              <strong>{selectedTeeth.map((tooth) => convertToNotation(tooth, notationSystem, dentition)).join(", ")}</strong>
             </div>
             <div className="chart-entry-list">
               {selectedEntries.length === 0 ? (
@@ -382,7 +652,7 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
               ) : (
                 selectedEntries.map((entry) => (
                   <div className="chart-entry" key={entry.id}>
-                    <span className={`status-dot ${entry.status.toLowerCase()}`} />
+                    <span className={`status-dot ${statusClass(entry.status)}`} />
                     <div>
                       <strong>{entry.surfaces.join("")} · {entry.description}</strong>
                       <small>{entry.code} · {entry.status} · {entry.provider}</small>
@@ -395,12 +665,31 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
             </div>
           </article>
 
-          <article className="clinical-card code-card">
+          <article className="clinical-card code-card procedure-search-card">
             <div className="clinical-heading">
-              <h3>CDT Code Advisor</h3>
+              <h3>Procedure Code Search</h3>
               <button onClick={() => onCreateTask("Provider to verify CDT code against current manual")}>Add from plan</button>
             </div>
-            <p className="code-warning">Coding must be verified against the current CDT manual and payer policy before submission.</p>
+            <p className="code-warning">Demo seed only. A licensed CDT source must be imported by the practice before production billing.</p>
+            <label className="code-search">
+              <span>Search by phrase, code, or surface</span>
+              <input value={procedureQuery} onChange={(event) => setProcedureQuery(event.target.value)} placeholder="crown, MOD filling, D2393" />
+            </label>
+            <div className={`validation-box ${activeValidation.severity}`}>
+              <strong>{selectedCatalogCode.code} · {activeValidation.claimReadinessScore}% ready</strong>
+              {activeValidation.messages.slice(0, 2).map((message) => <span key={message}>{message}</span>)}
+              {activeValidation.missingDocumentation.slice(0, 2).map((item) => <span key={item}>Missing: {item}</span>)}
+            </div>
+            {procedureSearchResults.map((procedure) => (
+              <button className="procedure-result" key={procedure.id} onClick={() => setProcedureQuery(procedure.code)}>
+                <div>
+                  <strong>{procedure.code} · {procedure.plainEnglishDescription}</strong>
+                  <span>{procedure.category} · {procedure.allowedScopes.join(", ")}</span>
+                  <small>{procedure.requiredClinicalEvidence.join(" · ")}</small>
+                </div>
+                <b>{currency(procedure.defaultFee)}</b>
+              </button>
+            ))}
             {codeOptions.map((code) => (
               <div className="code-option" key={code.code}>
                 <div>
@@ -411,6 +700,10 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
                 <ConfidenceChip confidence={code.confidence} />
               </div>
             ))}
+            <div className="admin-import-box">
+              <strong>Admin CDT Import Ready</strong>
+              <span>Versioned code tables, fee schedules, tooth/surface rules, insurance metadata, and audit trails are modeled for a licensed import workflow.</span>
+            </div>
             <h4>Documentation Required</h4>
             <ul className="doc-list">
               {codeOptions[0]?.documentation.map((item) => (
@@ -488,6 +781,83 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
         })}
       </div>
     </section>
+  );
+}
+
+function ModernOdontogram({
+  dentition,
+  notationSystem,
+  entries,
+  findings,
+  selectedTeeth,
+  selectedTooth,
+  selectedSurfaces,
+  onSelectTooth,
+  onSurfaceClick
+}: {
+  dentition: Dentition;
+  notationSystem: NotationSystem;
+  entries: ChartEntry[];
+  findings: ToothFinding[];
+  selectedTeeth: number[];
+  selectedTooth: number;
+  selectedSurfaces: ToothSurface[];
+  onSelectTooth: (tooth: number, additive?: boolean) => void;
+  onSurfaceClick: (surface: ToothSurface) => void;
+}) {
+  const upper = dentition === "Adult" ? upperTeeth : pediatricUpperTeeth;
+  const lower = dentition === "Adult" ? lowerTeeth : pediatricLowerTeeth;
+
+  function renderRow(teeth: number[], arch: "upper" | "lower") {
+    return (
+      <div className={`odontogram-row ${arch} ${dentition.toLowerCase()}`}>
+        {teeth.map((tooth) => {
+          const finding = findings.find((item) => item.tooth === tooth);
+          const entry = entries.find((item) => item.tooth === tooth);
+          const condition = entry?.condition ?? finding?.condition ?? "watch";
+          const chartedSurfaces = new Set(entry?.surfaces ?? []);
+          const selected = selectedTeeth.includes(tooth);
+          return (
+            <button
+              className={`modern-tooth ${condition} ${selected ? "selected" : ""} ${selectedTooth === tooth ? "focused" : ""}`}
+              key={tooth}
+              onClick={(event) => onSelectTooth(tooth, event.shiftKey)}
+              aria-label={`Tooth ${convertToNotation(tooth, notationSystem, dentition)}`}
+            >
+              <span className="tooth-label">{convertToNotation(tooth, notationSystem, dentition)}</span>
+              <span className="tooth-surfaces" aria-hidden="true">
+                {surfaces.map((surface) => (
+                  <i
+                    className={`mini-surface ${surface.toLowerCase()} ${chartedSurfaces.has(surface) ? "charted" : ""} ${selected && selectedSurfaces.includes(surface) ? "active" : ""}`}
+                    key={surface}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onSelectTooth(tooth);
+                      onSurfaceClick(surface);
+                    }}
+                  >
+                    {surface}
+                  </i>
+                ))}
+              </span>
+              {(finding || entry) && <b>{entry?.code ?? finding?.condition}</b>}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div className="odontogram-stage">
+      {renderRow(upper, "upper")}
+      <div className="arch-divider">
+        <span>Upper</span>
+        <i />
+        <span>Lower</span>
+      </div>
+      {renderRow(lower, "lower")}
+    </div>
   );
 }
 
@@ -694,7 +1064,8 @@ function normalizeSurfaces(surfaceText: string): ToothSurface[] {
 }
 
 function buildProcedure(condition: ToothCondition, tooth: number, selectedSurfaces: ToothSurface[]): ProcedureLine {
-  const surfaceCount = selectedSurfaces.length;
+  const restorativeSurfaces = selectedSurfaces.filter((surface) => surface !== "R");
+  const surfaceCount = restorativeSurfaces.length || 1;
   if (condition === "crown") return { code: "D2740", description: "Porcelain/ceramic crown", fee: 1280, category: "major", tooth: String(tooth) };
   if (condition === "rct") return { code: "D3330", description: "Molar root canal therapy", fee: 1420, category: "major", tooth: String(tooth) };
   if (condition === "watch") return { code: "WATCH", description: "Clinical watch note", fee: 0, category: "basic", tooth: String(tooth), surface: selectedSurfaces.join("") };
@@ -727,13 +1098,49 @@ function surfaceColor(condition: ToothCondition) {
 function surfaceOffset(surface: ToothSurface) {
   const offsets: Record<ToothSurface, { x: number; z: number; rotate: number }> = {
     O: { x: 0, z: 0, rotate: 0 },
+    I: { x: 0, z: 0, rotate: 0 },
     M: { x: -0.46, z: 0, rotate: 0.25 },
     D: { x: 0.46, z: 0, rotate: -0.25 },
     B: { x: 0, z: -0.4, rotate: 0 },
     L: { x: 0, z: 0.4, rotate: 0 },
-    F: { x: 0, z: -0.52, rotate: 0 }
+    F: { x: 0, z: -0.52, rotate: 0 },
+    R: { x: 0, z: 0.56, rotate: 0 }
   };
   return offsets[surface];
+}
+
+function conditionFromCode(code: string): ToothCondition {
+  if (code === "WATCH") return "watch";
+  if (code === "D2740" || code === "D2750" || code === "D6240") return "crown";
+  if (code === "D3330") return "rct";
+  if (code === "D7140") return "missing";
+  if (code.startsWith("D23")) return "caries";
+  return "restoration";
+}
+
+function quadrantTeeth(quadrant: string, dentition: Dentition) {
+  const adult: Record<string, number[]> = {
+    UR: [1, 2, 3, 4, 5, 6, 7, 8],
+    UL: [9, 10, 11, 12, 13, 14, 15, 16],
+    LL: [17, 18, 19, 20, 21, 22, 23, 24],
+    LR: [25, 26, 27, 28, 29, 30, 31, 32]
+  };
+  const pediatric: Record<string, number[]> = {
+    UR: [1, 2, 3, 4, 5],
+    UL: [6, 7, 8, 9, 10],
+    LL: [11, 12, 13, 14, 15],
+    LR: [16, 17, 18, 19, 20]
+  };
+  return dentition === "Adult" ? adult[quadrant] ?? [] : pediatric[quadrant] ?? [];
+}
+
+function archTeeth(arch: string, dentition: Dentition) {
+  if (dentition === "Adult") return arch === "Upper" ? upperTeeth : lowerTeeth;
+  return arch === "Upper" ? pediatricUpperTeeth : pediatricLowerTeeth;
+}
+
+function statusClass(status: ChartStatus) {
+  return status.toLowerCase().replace(/\s+/g, "-");
 }
 
 function currency(value: number) {

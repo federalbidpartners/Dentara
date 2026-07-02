@@ -1386,6 +1386,213 @@ button {
   padding: 0 10px;
 }
 
+.odontogram-toolbar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto auto;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 10px;
+}
+
+.odontogram-toolbar label,
+.code-search {
+  display: grid;
+  gap: 5px;
+}
+
+.odontogram-toolbar span,
+.code-search span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.odontogram-toolbar select,
+.code-search input,
+.command-bar input {
+  min-width: 0;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  padding: 0 10px;
+  outline: 0;
+}
+
+.odontogram-toolbar button,
+.scope-row button,
+.command-bar button,
+.command-review button,
+.procedure-result,
+.smart-suggestion-card button {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 850;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.odontogram-toolbar button:disabled,
+.command-review button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.odontogram-stage {
+  border: 1px solid #cfe0ff;
+  border-radius: var(--radius);
+  background:
+    linear-gradient(180deg, rgba(248, 251, 255, 0.96), rgba(255, 255, 255, 0.98));
+  padding: 10px;
+  overflow-x: auto;
+}
+
+.odontogram-row {
+  display: grid;
+  grid-template-columns: repeat(16, minmax(38px, 1fr));
+  gap: 5px;
+  min-width: 690px;
+}
+
+.odontogram-row.pediatric {
+  grid-template-columns: repeat(10, minmax(38px, 1fr));
+  min-width: 460px;
+}
+
+.modern-tooth {
+  position: relative;
+  min-height: 82px;
+  border: 1px solid #d9c7ad;
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, #fffaf2, #f3e3c7);
+  color: #694f31;
+  padding: 6px 4px 5px;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 4px;
+  box-shadow: inset 0 0 12px rgba(111, 82, 39, 0.09);
+}
+
+.modern-tooth.selected {
+  border-color: #80aefd;
+  box-shadow: 0 0 0 2px rgba(31, 111, 235, 0.16), inset 0 0 12px rgba(111, 82, 39, 0.09);
+}
+
+.modern-tooth.focused {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.modern-tooth.caries { border-bottom-color: #f59e0b; }
+.modern-tooth.restoration { border-bottom-color: #2563eb; }
+.modern-tooth.crown { border-bottom-color: #8b5cf6; }
+.modern-tooth.rct { border-bottom-color: #e5484d; }
+.modern-tooth.missing { opacity: 0.58; }
+.modern-tooth.watch { border-bottom-color: #f97316; }
+
+.tooth-label {
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.tooth-surfaces {
+  display: grid;
+  grid-template-areas:
+    ". b ."
+    "m o d"
+    ". l r";
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  align-items: stretch;
+}
+
+.mini-surface {
+  min-height: 16px;
+  border: 1px solid rgba(112, 88, 55, 0.16);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.52);
+  color: #755a37;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 950;
+  display: grid;
+  place-items: center;
+}
+
+.mini-surface.o { grid-area: o; border-radius: 50%; }
+.mini-surface.m { grid-area: m; }
+.mini-surface.d { grid-area: d; }
+.mini-surface.b { grid-area: b; }
+.mini-surface.l { grid-area: l; }
+.mini-surface.r { grid-area: r; }
+.mini-surface.charted,
+.mini-surface.active {
+  background: #3b82f6;
+  color: #fff;
+  border-color: #2f6bd0;
+}
+
+.modern-tooth b {
+  min-height: 13px;
+  color: var(--muted);
+  font-size: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arch-divider {
+  min-width: 690px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.arch-divider i {
+  height: 1px;
+  background: var(--line);
+}
+
+.scope-row,
+.shortcut-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.scope-row button.active {
+  color: var(--blue);
+  background: var(--blue-soft);
+  border-color: #bdd3ff;
+}
+
+.shortcut-strip span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f8fbff;
+  color: var(--muted);
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .tooth-arch {
   display: grid;
   grid-template-columns: repeat(16, minmax(18px, 1fr));
@@ -1541,7 +1748,7 @@ button {
   grid-template-areas:
     ". b ."
     "m o d"
-    ". l f";
+    ". l r";
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
   gap: 6px;
@@ -1566,6 +1773,7 @@ button {
 .surface-map button.b { grid-area: b; border-radius: 50% 50% 24% 24%; }
 .surface-map button.l { grid-area: l; border-radius: 24% 24% 50% 50%; }
 .surface-map button.f { grid-area: f; border-radius: 24% 24% 50% 50%; }
+.surface-map button.r { grid-area: r; border-radius: 24% 24% 50% 50%; }
 
 .surface-map button.active,
 .surface-map button.caries {
@@ -1741,6 +1949,61 @@ button {
   font-weight: 700;
 }
 
+.chart-command-card {
+  border-color: #bfe5cf;
+  background:
+    linear-gradient(180deg, #fff, #f8fffb);
+}
+
+.command-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.command-bar button,
+.command-review.ready button,
+.smart-suggestion-card button {
+  color: var(--blue);
+  background: #f6f9ff;
+  border-color: #cfe0ff;
+}
+
+.command-review {
+  margin-top: 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.command-review.ready {
+  border-color: #bfe5cf;
+  background: var(--green-soft);
+}
+
+.command-review.blocked {
+  border-color: #ffc7c7;
+  background: var(--red-soft);
+}
+
+.command-review strong,
+.command-review span,
+.command-review small {
+  display: block;
+}
+
+.command-review span,
+.command-review small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
 .perio-grid {
   display: grid;
   grid-template-columns: repeat(16, 1fr);
@@ -1885,6 +2148,76 @@ button {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
+}
+
+.smart-planner-card {
+  border: 1px solid #cfe0ff;
+  border-radius: var(--radius);
+  background: #fff;
+  padding: 10px;
+  margin-bottom: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.readiness-meter {
+  position: relative;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fbff;
+  padding: 8px;
+  overflow: hidden;
+}
+
+.readiness-meter span,
+.readiness-meter strong {
+  position: relative;
+  z-index: 1;
+  display: block;
+}
+
+.readiness-meter span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.readiness-meter strong {
+  margin-top: 3px;
+  font-size: 14px;
+}
+
+.readiness-meter i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--green), var(--blue));
+}
+
+.smart-suggestion-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px;
+}
+
+.smart-suggestion-card strong,
+.smart-suggestion-card span,
+.smart-suggestion-card small {
+  display: block;
+}
+
+.smart-suggestion-card span,
+.smart-suggestion-card small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 3px;
 }
 
 .ai-suggestion-list {
@@ -2117,6 +2450,102 @@ button {
   color: #8a5200;
 }
 
+.procedure-search-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.validation-box {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px;
+  background: #f8fbff;
+}
+
+.validation-box.pass {
+  border-color: #bfe5cf;
+  background: var(--green-soft);
+}
+
+.validation-box.draft {
+  border-color: #ffd99b;
+  background: var(--amber-soft);
+}
+
+.validation-box.blocked {
+  border-color: #ffc7c7;
+  background: var(--red-soft);
+}
+
+.validation-box strong,
+.validation-box span {
+  display: block;
+}
+
+.validation-box strong {
+  font-size: 12px;
+}
+
+.validation-box span {
+  color: #42526a;
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
+.procedure-result {
+  width: 100%;
+  min-height: 58px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  justify-content: stretch;
+  text-align: left;
+}
+
+.procedure-result div,
+.procedure-result strong,
+.procedure-result span,
+.procedure-result small {
+  min-width: 0;
+  display: block;
+}
+
+.procedure-result span,
+.procedure-result small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
+.procedure-result b {
+  color: var(--green);
+  font-size: 12px;
+}
+
+.admin-import-box,
+.selection-summary {
+  border: 1px solid #cfe0ff;
+  border-radius: var(--radius);
+  background: #f6f9ff;
+  padding: 10px;
+}
+
+.admin-import-box strong,
+.admin-import-box span,
+.selection-summary strong,
+.selection-summary span {
+  display: block;
+}
+
+.admin-import-box span,
+.selection-summary span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
 .code-option {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -2240,6 +2669,9 @@ button {
 .status-dot.planned { background: var(--blue); }
 .status-dot.completed { background: var(--green); }
 .status-dot.watch { background: var(--amber); }
+.status-dot.referred { background: #8b5cf6; }
+.status-dot.declined { background: #94a3b8; }
+.status-dot.insurance-pending { background: #d97706; }
 
 .plan-row {
   display: grid;
@@ -2697,7 +3129,11 @@ button {
   .note-assist,
   .procedure-grid,
   .smart-code-preview,
-  .status-row {
+  .status-row,
+  .odontogram-toolbar,
+  .command-bar,
+  .command-review,
+  .smart-suggestion-card {
     grid-template-columns: 1fr;
   }
 
@@ -2758,6 +3194,11 @@ button {
 
   .tooth-arch {
     grid-template-columns: repeat(8, 1fr);
+  }
+
+  .odontogram-row,
+  .arch-divider {
+    min-width: 600px;
   }
 
   .tooth-3d-canvas {

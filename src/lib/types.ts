@@ -3,8 +3,12 @@ export type Confidence = "High" | "Medium" | "Low";
 export type Risk = "Low" | "Medium" | "High";
 export type Role = "Front Desk" | "Billing Lead" | "Owner" | "Compliance Officer";
 export type ToothCondition = "caries" | "restoration" | "crown" | "rct" | "implant" | "missing" | "watch";
-export type ToothSurface = "O" | "M" | "D" | "B" | "L" | "F";
-export type ChartStatus = "Existing" | "Planned" | "Completed" | "Watch";
+export type ToothSurface = "M" | "O" | "I" | "D" | "B" | "F" | "L" | "R";
+export type ChartStatus = "Existing" | "Planned" | "Completed" | "Watch" | "Referred" | "Declined" | "Insurance Pending";
+export type NotationSystem = "Universal" | "Palmer" | "FDI";
+export type Dentition = "Adult" | "Pediatric";
+export type ProcedureScope = "tooth" | "surface" | "quadrant" | "arch" | "full-mouth";
+export type TreatmentPlanStatus = "draft" | "proposed" | "accepted" | "scheduled" | "completed" | "billed" | "paid" | "denied" | "referred" | "declined";
 
 export interface Patient {
   id: string;
@@ -54,6 +58,113 @@ export interface ProcedureLine {
   tooth?: string;
   surface?: string;
   narrative?: string;
+}
+
+export interface ProcedureCategory {
+  id: string;
+  name: string;
+  sortOrder: number;
+}
+
+export interface CodeVersion {
+  id: string;
+  label: string;
+  effectiveDate: string;
+  importedAt: string;
+  source: "demo" | "licensed-import";
+}
+
+export interface ProcedureCode {
+  id: string;
+  code: string;
+  codeVersionId: string;
+  officialDescription: string;
+  plainEnglishDescription: string;
+  categoryId: string;
+  category: string;
+  active: boolean;
+  effectiveDate: string;
+  retirementDate?: string;
+  replacementCode?: string;
+  requiresTooth: boolean;
+  requiresSurface: boolean;
+  allowedScopes: ProcedureScope[];
+  defaultFee: number;
+  synonyms: string[];
+  insuranceBillingMetadata: {
+    payerReviewRisk: Risk;
+    preAuthRecommended: boolean;
+    narrativeRecommended: boolean;
+  };
+  requiredClinicalEvidence: string[];
+  attachmentsRequired: string[];
+  favoriteRank?: number;
+}
+
+export interface ProcedureToothRule {
+  procedureCodeId: string;
+  validDentitions: Dentition[];
+  validSurfaces: ToothSurface[];
+  validScopes: ProcedureScope[];
+  toothRequired: boolean;
+  surfaceRequired: boolean;
+}
+
+export interface TreatmentPlanItem {
+  id: string;
+  patientId: string;
+  providerId: string;
+  toothNumber?: string;
+  notationSystem: NotationSystem;
+  surfaces: ToothSurface[];
+  scope: ProcedureScope;
+  quadrant?: "UR" | "UL" | "LR" | "LL";
+  arch?: "Upper" | "Lower";
+  procedureCodeId: string;
+  procedureCodeVersionId: string;
+  status: TreatmentPlanStatus;
+  fee: number;
+  insuranceEstimate: number;
+  patientEstimate: number;
+  clinicalNotes: string;
+  documentationRequirements: string[];
+  attachments: string[];
+  claimReadinessScore: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProcedureValidationResult {
+  valid: boolean;
+  severity: "pass" | "draft" | "blocked";
+  messages: string[];
+  missingDocumentation: string[];
+  claimReadinessScore: number;
+}
+
+export interface SmartProcedureSuggestion {
+  id: string;
+  procedureCode: ProcedureCode;
+  confidence: Confidence;
+  reason: string;
+  scope: ProcedureScope;
+  toothNumber?: string;
+  surfaces: ToothSurface[];
+  documentation: string[];
+  denialWarnings: string[];
+  claimReadinessScore: number;
+}
+
+export interface ChartCommandResult {
+  raw: string;
+  reviewRequired: boolean;
+  intent: "procedure" | "multi-tooth" | "full-mouth" | "unknown";
+  toothNumbers: number[];
+  surfaces: ToothSurface[];
+  matchedCode?: ProcedureCode;
+  scope: ProcedureScope;
+  note: string;
+  errors: string[];
 }
 
 export interface BenefitSummary {
