@@ -2265,6 +2265,37 @@ button {
   grid-template-columns: 24px 1fr;
 }
 
+.legal-blocker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.legal-blocker {
+  border: 1px solid #ffd99b;
+  background: var(--amber-soft);
+  border-radius: 6px;
+  padding: 9px;
+}
+
+.legal-blocker strong,
+.legal-blocker span {
+  display: block;
+}
+
+.legal-blocker strong {
+  color: #7a4a00;
+  font-size: 12px;
+}
+
+.legal-blocker span {
+  color: #7b5b27;
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
 .insurance-panel {
   background:
     linear-gradient(180deg, #fff, #f8fbff);

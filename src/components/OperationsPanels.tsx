@@ -1,5 +1,5 @@
 import { CheckCircle2, Landmark, LockKeyhole, SendHorizonal, ShieldCheck } from "lucide-react";
-import { hipaaReadinessControls, launchReadiness } from "../lib/compliance";
+import { hipaaReadinessControls, launchReadiness, legalLaunchBlockers } from "../lib/compliance";
 import { getClearinghouseOptions, getGeneratedTasks, getInsuranceWorkflow, getRevenueLeaks } from "../lib/engines";
 import { Patient, Task } from "../lib/types";
 import { RiskChip } from "./StatusChip";
@@ -101,8 +101,8 @@ export function OperationsPanels({ patients, tasks, onTaskStatus }: OperationsPa
 
       <article className="ops-panel compliance-panel">
         <div className="panel-title">
-          <h3>HIPAA Readiness Center</h3>
-          <span>Not legal certification</span>
+          <h3>Legal Launch Center</h3>
+          <span>{legalLaunchBlockers.length} launch blockers</span>
         </div>
         <div className="control-grid">
           {hipaaReadinessControls.map((control) => (
@@ -121,6 +121,14 @@ export function OperationsPanels({ patients, tasks, onTaskStatus }: OperationsPa
             <strong>Before real PHI</strong>
             <span>{launchReadiness[0]}</span>
           </div>
+        </div>
+        <div className="legal-blocker-list">
+          {legalLaunchBlockers.slice(0, 3).map((item) => (
+            <div className="legal-blocker" key={item.area}>
+              <strong>{item.area}</strong>
+              <span>{item.blocker}</span>
+            </div>
+          ))}
         </div>
       </article>
     </section>

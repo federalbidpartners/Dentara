@@ -34,7 +34,7 @@ This audit compares Dentara's current demo to major Dentrix/Dentrix Ascend capab
 2. Do not submit real claims from the current demo.
 3. Do not use AI suggestions as diagnosis.
 4. Do not rely on sample CDT logic as billing advice.
-5. Do not market as HIPAA compliant until administrative, technical, physical, vendor, and legal safeguards are in place.
+5. Do not market as production-ready for HIPAA-regulated use until administrative, technical, physical, vendor, and legal safeguards are in place.
 
 ## Visual/UX Health
 

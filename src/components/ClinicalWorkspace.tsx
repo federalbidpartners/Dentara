@@ -473,7 +473,7 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
           ["Missing attachment detector", ClipboardCheck],
           ["Before/after compare", ImageIcon],
           ["Chairside patient estimate", Sparkles],
-          ["AI diagnosis checklist", BrainCircuit],
+          ["AI diagnostic checklist", BrainCircuit],
           ["Hygiene recall gap", Stethoscope],
           ["Clinical handoff note", Copy],
           ["Finalize surfaces + codes", CheckCircle2]

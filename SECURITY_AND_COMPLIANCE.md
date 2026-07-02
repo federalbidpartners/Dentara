@@ -32,14 +32,14 @@ Use this checklist before allowing any real practice, patient, insurance, claim,
 
 ## Product Safety Rules
 
-- Never guarantee insurance payment.
+- Never promise payer reimbursement or patient benefit coverage.
 - Every estimate must show caveats and confidence.
 - Never present CDT/code advisor output as coding advice or a final billing determination.
 - Never present image findings as diagnosis. Findings must be provider-reviewed and documented.
 - Never present AI Clinical Copilot output as a final diagnosis or autonomous treatment decision. It must show evidence, confidence, and provider-review controls.
 - Never present 3D tooth/model overlays as diagnostic ground truth. They are visualization aids until validated clinical imaging pipelines are implemented.
 - Claim submission must require explicit user approval until compliance and payer workflows are fully validated.
-- No autonomous diagnosis.
+- No standalone clinical diagnosis by software.
 - No real PHI in demos, screenshots, training data, support examples, or sales collateral without explicit written approval and appropriate safeguards.
 
 ## Source Anchors

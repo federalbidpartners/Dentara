@@ -1,6 +1,6 @@
 # Dentara AI Dental OS
 
-Dentara is a HIPAA-ready dental operations MVP for insurance readiness, claim-risk prevention, treatment estimates, tasking, revenue leakage, and compliance evidence.
+Dentara is a compliance-gated dental operations MVP for insurance readiness, claim-risk prevention, treatment estimates, tasking, revenue leakage, and compliance evidence.
 
 This repository is a production-oriented market demo, not a legal certification. HIPAA compliance requires the software controls here plus signed BAAs, policies, risk analysis, secure hosting, workforce procedures, vendor review, and counsel/compliance validation before any real PHI is used.
 
@@ -33,7 +33,7 @@ pnpm dev
 
 The app is configured for Vite on `http://127.0.0.1:5178`.
 
-## HIPAA-Readiness Posture
+## Compliance-Gated Posture
 
 Implemented in this market demo:
 
@@ -78,6 +78,9 @@ The UI currently runs with local fake data and deterministic engines. A producti
 - `DENTAL_CODE_AND_PRODUCT_READINESS.md` documents the sample CDT code posture and what is required before real dentist production use.
 - `EXPO_APP_STORE_READINESS.md` documents the Expo Go, React Native, and Apple App Store path.
 - `DENTRIX_PARITY_AND_SECURITY_AUDIT.md` documents Dentrix-style parity, current security posture, and production gaps.
+- `LEGAL_AND_COMPLIANCE_LAUNCH_PLAN.md` documents the legal launch gates for HIPAA, BAAs, AI/CDS review, CDT licensing, insurance workflows, breach response, and state/privacy review.
+- `VENDOR_BAA_AND_DPA_MATRIX.md` documents the vendor contract matrix needed before handling real PHI.
+- `AI_CLINICAL_SAFETY_AND_FDA_REVIEW.md` documents clinical AI guardrails and the FDA CDS/SaMD review path.
 
 ## Current Design Reference
 

@@ -19,6 +19,13 @@ const allowedCdtCodes = new Set([
 
 const allowedInternalCodes = new Set(["WATCH"]);
 const errors = [];
+const requiredLegalFiles = [
+  "LEGAL_AND_COMPLIANCE_LAUNCH_PLAN.md",
+  "VENDOR_BAA_AND_DPA_MATRIX.md",
+  "AI_CLINICAL_SAFETY_AND_FDA_REVIEW.md",
+  "SECURITY_AND_COMPLIANCE.md",
+  "DENTAL_CODE_AND_PRODUCT_READINESS.md"
+];
 
 function readTextFiles(dir) {
   return readdirSync(dir).flatMap((name) => {
@@ -37,9 +44,34 @@ for (const file of files) {
   if (/Molaris|MOLARIS|molaris/.test(text)) {
     errors.push(`Old brand reference found in ${file}`);
   }
+  if (/HIPPA/.test(text)) {
+    errors.push(`HIPAA misspelled as HIPPA in ${file}`);
+  }
+}
+
+for (const file of requiredLegalFiles) {
+  try {
+    readFileSync(join(root, file), "utf8");
+  } catch {
+    errors.push(`Required legal/compliance launch artifact missing: ${file}`);
+  }
 }
 
 const sourceText = files.map((file) => readFileSync(file, "utf8")).join("\n");
+const unsafeClaims = [
+  /\bHIPAA compliant\b/i,
+  /\bguaranteed HIPAA\b/i,
+  /\bguarantees? insurance payment\b/i,
+  /\bautonomous diagnosis\b/i,
+  /\bAI diagnosis\b/i
+];
+
+for (const pattern of unsafeClaims) {
+  if (pattern.test(sourceText)) {
+    errors.push(`Unsafe legal/clinical claim found: ${pattern}`);
+  }
+}
+
 const discoveredCodes = new Set(sourceText.match(/\bD\d{4}\b/g) ?? []);
 for (const code of discoveredCodes) {
   if (!allowedCdtCodes.has(code)) {
