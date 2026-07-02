@@ -4,6 +4,7 @@ import {
   ClinicalAiSuggestion,
   ClaimFinding,
   ClaimGuardResult,
+  ClaimSubmissionSummary,
   CodeRecommendation,
   Confidence,
   DiagnosticAssistResult,
@@ -11,6 +12,7 @@ import {
   ImagingFinding,
   InsuranceWorkflowStep,
   Patient,
+  PracticeGrowthFeature,
   ReadinessResult,
   RevenueLeak,
   Risk,
@@ -548,21 +550,143 @@ export function getClearinghouseOptions(): ClearinghouseOption[] {
   return [
     {
       name: "DentalXChange XConnect",
+      category: "Dental clearinghouse API",
+      status: "Sandbox target",
       fit: "Best dental-specific starting point for eligibility, claims, attachments, payments, and reconciliation APIs.",
       transactions: ["270/271", "837D", "275", "276/277", "835"],
+      differentiator: "Dental-first gateway with claim validation, submission, status, attachments, payments, and reconciliation paths.",
       implementationNote: "Request developer access, sandbox credentials, payer enrollment requirements, write-access terms, and a BAA."
     },
     {
       name: "Stedi Dental Claims API",
+      category: "API-first 837D",
+      status: "Sandbox target",
       fit: "Modern API-first option for generating and submitting dental claims without hand-building X12.",
       transactions: ["837D"],
+      differentiator: "JSON or raw X12 837D submission with 277CA and 835 response workflows through the clearinghouse.",
       implementationNote: "Use for 837D claim automation, then pair with eligibility/status/ERA services as needed."
     },
     {
       name: "Optum / Change Healthcare network APIs",
+      category: "Network APIs",
+      status: "Contract needed",
       fit: "Broad healthcare network path for eligibility, status, responses, and payer connectivity where dental workflows are supported.",
       transactions: ["270/271", "276/277", "835"],
+      differentiator: "Useful for eligibility, claim status, response reports, ERA enrollment, and payer network connectivity.",
       implementationNote: "Validate dental payer coverage, enrollment steps, outage posture, BAA, and production credentialing."
+    },
+    {
+      name: "Vyne Dental / FastAttach",
+      category: "Dental attachments + RCM",
+      status: "Attachment specialist",
+      fit: "Strong dental attachment workflow for radiographs, intraoral images, perio charts, EOBs, narratives, and pre-treatment estimates.",
+      transactions: ["275"],
+      differentiator: "Attachment-focused workflow that can reduce missing-document delays and connect claim packets to payer requirements.",
+      implementationNote: "Use as an attachment lane alongside claim submission until full clearinghouse coverage is contracted."
+    },
+    {
+      name: "Availity Dental Claims",
+      category: "REST transaction marketplace",
+      status: "Contract needed",
+      fit: "API marketplace path for dental claims, eligibility, claim status, attachments, and payer-list style workflows where available.",
+      transactions: ["270/271", "837D", "275", "276/277"],
+      differentiator: "REST API approach with broad administrative transaction tooling and payer connectivity review required.",
+      implementationNote: "Confirm dental payer coverage, contract terms, BAA scope, and sandbox access before integration."
+    },
+    {
+      name: "Claim.MD",
+      category: "Clearinghouse integration",
+      status: "Contract needed",
+      fit: "Vendor-friendly clearinghouse option for claims, eligibility, ERA, and attachment files with simplified integration formats.",
+      transactions: ["270/271", "837D", "275", "835"],
+      differentiator: "Can support batch-oriented clearinghouse integration patterns and test-account rejection simulation.",
+      implementationNote: "Verify dental 837D pathway, payer coverage, file/API formats, BAA terms, and production enrollment."
+    },
+    {
+      name: "Open Dental API bridge",
+      category: "PMS bridge",
+      status: "PMS bridge",
+      fit: "Practice-management connector for creating or syncing claims, procedures, providers, insurance plans, and claim procedures.",
+      transactions: ["837D"],
+      differentiator: "Keeps Dentara aligned with the system of record before clearinghouse submission.",
+      implementationNote: "Use as a PMS adapter, not a clearinghouse replacement; enforce tenant isolation and audit every sync."
+    },
+    {
+      name: "Vyne ClearCoverage / Onederful",
+      category: "Eligibility APIs",
+      status: "Eligibility specialist",
+      fit: "Dental eligibility and benefits APIs for normalized, real-time coverage data before chairside estimates.",
+      transactions: ["270/271"],
+      differentiator: "Can improve estimate confidence and reduce manual benefit calls before treatment presentation.",
+      implementationNote: "Pair with ClaimGuard and EstimateIQ; validate BAA, payer coverage, and response normalization."
+    }
+  ];
+}
+
+export function getClaimSubmissionSummary(patientList: Patient[]): ClaimSubmissionSummary {
+  const workflows = patientList.map((patient) => ({
+    patient,
+    claim: getClaimGuard(patient),
+    attachments: getAttachmentChecklist(patient)
+  }));
+  const readyClaims = workflows.filter((item) => item.claim.risk === "Low" && item.patient.insuranceActive).length;
+  const blockedClaims = workflows.filter((item) => item.claim.findings.some((finding) => finding.severity === "blocker")).length;
+  const reviewClaims = Math.max(workflows.length - readyClaims - blockedClaims, 0);
+  const attachmentGaps = workflows.reduce((count, item) => count + item.attachments.filter((attachment) => attachment.required && !attachment.complete).length, 0);
+  const cleanClaimRate = Math.round((readyClaims / Math.max(patientList.length, 1)) * 100);
+  const estimatedRecoverable = patientList.reduce((sum, patient) => {
+    const claim = getClaimGuard(patient);
+    if (claim.risk === "Low" || patient.claimSubmitted) return sum;
+    return sum + Math.min(patient.plannedProcedure.fee, patient.annualMaxRemaining);
+  }, 0);
+
+  return {
+    cleanClaimRate,
+    readyClaims,
+    reviewClaims,
+    blockedClaims,
+    attachmentGaps,
+    estimatedRecoverable,
+    submissionQueueLabel: blockedClaims > 0 ? "Fix blockers first" : reviewClaims > 0 ? "Review before batch" : "Batch ready"
+  };
+}
+
+export function getPracticeGrowthFeatures(patientList: Patient[]): PracticeGrowthFeature[] {
+  const summary = getClaimSubmissionSummary(patientList);
+  const unscheduledValue = patientList.reduce((sum, patient) => sum + patient.unscheduledTreatment, 0);
+  const staleBenefits = patientList.filter((patient) => patient.eligibilityCheckedDaysAgo > 7 || !patient.insuranceActive).length;
+  const unpostedEras = patientList.filter((patient) => patient.claimSubmitted && !patient.eraPosted).length;
+
+  return [
+    {
+      title: "One-click claim packet builder",
+      detail: "Bundles CDT lines, surfaces, narratives, X-rays, perio charts, and provider sign-off before submission.",
+      metric: `${summary.readyClaims} ready`,
+      owner: "Billing Lead"
+    },
+    {
+      title: "Denial prevention autopilot",
+      detail: "Flags missing subscriber data, stale eligibility, tooth/surface gaps, attachment gaps, and narrative risk.",
+      metric: `${summary.blockedClaims + summary.reviewClaims} guarded`,
+      owner: "Billing Lead"
+    },
+    {
+      title: "Same-day production finder",
+      detail: "Surfaces unscheduled treatment attached to today's patients with benefit and chairside estimate context.",
+      metric: currencyPlain(unscheduledValue),
+      owner: "Owner"
+    },
+    {
+      title: "Eligibility command queue",
+      detail: "Prioritizes stale benefits and inactive coverage before patients arrive so checkout feels effortless.",
+      metric: `${staleBenefits} checks`,
+      owner: "Front Desk"
+    },
+    {
+      title: "ERA autopost readiness",
+      detail: "Separates claim status, 277CA acknowledgments, 835 remittance, payment reconciliation, and ledger review.",
+      metric: `${unpostedEras} pending`,
+      owner: "Billing Lead"
     }
   ];
 }

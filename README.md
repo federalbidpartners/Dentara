@@ -18,7 +18,9 @@ This repository is a production-oriented market demo, not a legal certification.
 - CDT Code Advisor for sample procedure-code suggestions, documentation requirements, payer caveats, and manual verification warnings.
 - Dentist wish-list action bar: one-click crown narrative, pre-auth packet builder, missing attachment detector, before/after compare, chairside patient estimate, hygiene recall gap, clinical handoff note, and finalize-surfaces-and-codes workflow.
 - RevenueLeak engine for risky unsubmitted claims, unposted ERAs, old balances, and unscheduled treatment.
+- Claim Submission Command Center with clean-claim scoring, recoverable revenue estimate, packet completeness, attachment gaps, and connector-ready routing.
 - Insurance API Hub that separates real-world dental billing into eligibility (`270/271`), dental claim submission (`837D`), attachments/pre-auth (`275`), claim status (`276/277`), and ERA/payment posting (`835`) workflows.
+- Connector catalog for DentalXChange XConnect, Stedi Dental Claims API, Optum/Change network APIs, Vyne Dental/FastAttach, Availity, Claim.MD, Open Dental API bridge, and Vyne eligibility APIs.
 - NextAction task generation and task completion workflow.
 - Role-aware PHI reveal guard and local audit-event simulation.
 - HIPAA Readiness Center with required launch controls.
@@ -69,6 +71,9 @@ The UI currently runs with local fake data and deterministic engines. A producti
   - DentalXChange XConnect for dental-specific eligibility, claims, attachments, payment, and reconciliation APIs.
   - Stedi Dental Claims API for modern API-first 837D dental claim generation/submission.
   - Optum/Change Healthcare network APIs for eligibility, claim status, responses, and payer connectivity where dental workflows are supported.
+  - Vyne Dental/FastAttach for dental claim attachments including radiographs, perio charts, narratives, EOBs, and pre-treatment estimate support.
+  - Availity and Claim.MD for additional clearinghouse/API coverage after dental payer fit, BAA scope, and contract terms are reviewed.
+  - Open Dental API bridge for PMS claim/procedure sync before clearinghouse submission.
 - Encrypted file storage for attachments and EOBs.
 - Background jobs for eligibility checks, PMS syncs, claim status polling, and revenue leakage scans.
 - BAA-approved AI provider abstraction with no-PHI defaults, policy gates, eval fixtures, prompt/version logging, and human review.

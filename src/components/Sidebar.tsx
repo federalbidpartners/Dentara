@@ -56,10 +56,16 @@ export function Sidebar() {
   return (
     <aside className="sidebar" aria-label="Dentara navigation">
       <div className="brand">
-        <div className="brand-mark">D</div>
+        <div className="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 40 40" role="img">
+            <path className="brand-tooth" d="M12.4 9.4c2.4-2.1 5.2-2.3 7.6-.5 2.4-1.8 5.2-1.6 7.6.5 3.4 3 3 8.6.7 13.2-1.2 2.4-2.2 5.7-2.9 8.2-.5 1.8-2.9 2.1-3.8.5L20 28.4l-1.6 2.9c-.9 1.6-3.3 1.3-3.8-.5-.7-2.5-1.7-5.8-2.9-8.2-2.3-4.6-2.7-10.2.7-13.2Z" />
+            <path className="brand-spark" d="M25.5 10.3l1.1 2.7 2.7 1.1-2.7 1.1-1.1 2.7-1.1-2.7-2.7-1.1 2.7-1.1 1.1-2.7Z" />
+            <path className="brand-cut" d="M16.4 17.6h7.2" />
+          </svg>
+        </div>
         <div>
           <div className="brand-name">DENTARA</div>
-          <div className="brand-subtitle">AI Dental Operating System</div>
+          <div className="brand-subtitle">Dental Intelligence OS</div>
         </div>
       </div>
       <nav className="nav-sections">

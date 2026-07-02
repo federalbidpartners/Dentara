@@ -1,6 +1,6 @@
-import { CheckCircle2, Landmark, LockKeyhole, SendHorizonal, ShieldCheck } from "lucide-react";
+import { CheckCircle2, CircleDollarSign, Landmark, LockKeyhole, PlugZap, Rocket, SendHorizonal, ShieldCheck, Sparkles, TrendingUp } from "lucide-react";
 import { hipaaReadinessControls, launchReadiness, legalLaunchBlockers } from "../lib/compliance";
-import { getClearinghouseOptions, getGeneratedTasks, getInsuranceWorkflow, getRevenueLeaks } from "../lib/engines";
+import { getClaimSubmissionSummary, getClearinghouseOptions, getGeneratedTasks, getInsuranceWorkflow, getPracticeGrowthFeatures, getRevenueLeaks } from "../lib/engines";
 import { Patient, Task } from "../lib/types";
 import { RiskChip } from "./StatusChip";
 
@@ -18,30 +18,49 @@ export function OperationsPanels({ patients, tasks, onTaskStatus }: OperationsPa
   const blockedTransactions = insuranceSteps.filter((step) => step.status === "Blocked").length;
   const reviewTransactions = insuranceSteps.filter((step) => step.status === "Needs Review").length;
   const clearinghouseOptions = getClearinghouseOptions();
+  const claimSummary = getClaimSubmissionSummary(patients);
+  const growthFeatures = getPracticeGrowthFeatures(patients);
 
   return (
-    <section className="operations-grid">
-      <article className="ops-panel">
-        <div className="panel-title">
-          <h3>NextAction Task Inbox</h3>
-          <span>{mergedTasks.filter((task) => task.status !== "Done").length} open</span>
+    <>
+      <section className="rcm-command-strip">
+        <div className="rcm-hero-copy">
+          <div className="rcm-icon"><Rocket size={22} /></div>
+          <div>
+            <h3>Claim Submission Command Center</h3>
+            <p>Connector-ready dental RCM: validate packets, route attachments, submit 837D claims, track acknowledgments, reconcile ERAs, and keep the provider review loop intact.</p>
+          </div>
         </div>
-        <div className="task-list">
-          {mergedTasks.map((task) => {
-            const patient = patients.find((item) => item.id === task.patientId);
-            return (
-              <button className={`task-row ${task.status === "Done" ? "done" : ""}`} key={task.id} onClick={() => onTaskStatus(task.id)}>
-                <CheckCircle2 size={17} />
-                <div>
-                  <strong>{task.title}</strong>
-                  <span>{patient?.name ?? "Unknown patient"} · {task.owner} · {task.due}</span>
-                </div>
-                <RiskChip risk={task.severity} />
-              </button>
-            );
-          })}
+        <div className="rcm-metrics">
+          <MetricPill label="Clean claim rate" value={`${claimSummary.cleanClaimRate}%`} />
+          <MetricPill label="Submission queue" value={claimSummary.submissionQueueLabel} />
+          <MetricPill label="Recoverable" value={currency(claimSummary.estimatedRecoverable)} />
+          <MetricPill label="Attachment gaps" value={`${claimSummary.attachmentGaps}`} />
         </div>
-      </article>
+      </section>
+
+      <section className="operations-grid">
+        <article className="ops-panel">
+          <div className="panel-title">
+            <h3>NextAction Task Inbox</h3>
+            <span>{mergedTasks.filter((task) => task.status !== "Done").length} open</span>
+          </div>
+          <div className="task-list">
+            {mergedTasks.map((task) => {
+              const patient = patients.find((item) => item.id === task.patientId);
+              return (
+                <button className={`task-row ${task.status === "Done" ? "done" : ""}`} key={task.id} onClick={() => onTaskStatus(task.id)}>
+                  <CheckCircle2 size={17} />
+                  <div>
+                    <strong>{task.title}</strong>
+                    <span>{patient?.name ?? "Unknown patient"} · {task.owner} · {task.due}</span>
+                  </div>
+                  <RiskChip risk={task.severity} />
+                </button>
+              );
+            })}
+          </div>
+        </article>
 
       <article className="ops-panel">
         <div className="panel-title">
@@ -62,7 +81,7 @@ export function OperationsPanels({ patients, tasks, onTaskStatus }: OperationsPa
         </div>
       </article>
 
-      <article className="ops-panel insurance-panel">
+        <article className="ops-panel insurance-panel">
         <div className="panel-title">
           <h3>Insurance API Hub</h3>
           <span>{blockedTransactions} blocked · {reviewTransactions} review</span>
@@ -92,14 +111,17 @@ export function OperationsPanels({ patients, tasks, onTaskStatus }: OperationsPa
         <div className="vendor-list">
           {clearinghouseOptions.map((option) => (
             <div className="vendor-row" key={option.name}>
-              <strong>{option.name}</strong>
-              <span>{option.fit}</span>
+              <div>
+                <strong>{option.name}</strong>
+                <span>{option.fit}</span>
+              </div>
+              <small>{option.status}</small>
             </div>
           ))}
         </div>
       </article>
 
-      <article className="ops-panel compliance-panel">
+        <article className="ops-panel compliance-panel">
         <div className="panel-title">
           <h3>Legal Launch Center</h3>
           <span>{legalLaunchBlockers.length} launch blockers</span>
@@ -130,8 +152,35 @@ export function OperationsPanels({ patients, tasks, onTaskStatus }: OperationsPa
             </div>
           ))}
         </div>
-      </article>
-    </section>
+        </article>
+      </section>
+
+      <section className="growth-feature-grid">
+        {growthFeatures.map((feature, index) => {
+          const icons = [SendHorizonal, ShieldCheck, TrendingUp, PlugZap, CircleDollarSign];
+          const Icon = icons[index] ?? Sparkles;
+          return (
+            <button className="growth-feature" key={feature.title}>
+              <Icon size={18} />
+              <div>
+                <strong>{feature.title}</strong>
+                <span>{feature.detail}</span>
+              </div>
+              <b>{feature.metric}</b>
+            </button>
+          );
+        })}
+      </section>
+    </>
+  );
+}
+
+function MetricPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rcm-metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
   );
 }
 

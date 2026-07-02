@@ -208,4 +208,24 @@ export interface ClearinghouseOption {
   fit: string;
   transactions: InsuranceTransactionKind[];
   implementationNote: string;
+  category?: string;
+  status?: "Contract needed" | "Sandbox target" | "Attachment specialist" | "PMS bridge" | "Eligibility specialist";
+  differentiator?: string;
+}
+
+export interface ClaimSubmissionSummary {
+  cleanClaimRate: number;
+  readyClaims: number;
+  reviewClaims: number;
+  blockedClaims: number;
+  attachmentGaps: number;
+  estimatedRecoverable: number;
+  submissionQueueLabel: string;
+}
+
+export interface PracticeGrowthFeature {
+  title: string;
+  detail: string;
+  metric: string;
+  owner: Role;
 }

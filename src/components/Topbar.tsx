@@ -21,7 +21,7 @@ export function Topbar({ role, onRoleChange, query, onQueryChange, revealPhi, on
         </button>
         <div>
           <h1>Today Command Center</h1>
-          <p>Tuesday, June 30, 2026</p>
+          <p>Thursday, July 2, 2026</p>
         </div>
       </div>
       <label className="search-control">
