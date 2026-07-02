@@ -1,12 +1,15 @@
 import {
   BenefitSummary,
+  ClearinghouseOption,
   ClinicalAiSuggestion,
   ClaimFinding,
   ClaimGuardResult,
   CodeRecommendation,
   Confidence,
+  DiagnosticAssistResult,
   EstimateResult,
   ImagingFinding,
+  InsuranceWorkflowStep,
   Patient,
   ReadinessResult,
   RevenueLeak,
@@ -322,6 +325,7 @@ export function getNarrativeDraft(patient: Patient): string {
 
 export function getClinicalAiSuggestions(patient: Patient, noteDraft = ""): ClinicalAiSuggestion[] {
   const imaging = getImagingFindings(patient);
+  const diagnosticAssist = getDiagnosticAssist(patient, noteDraft);
   const suggestions: ClinicalAiSuggestion[] = imaging.map((finding, index) => ({
     id: `image-${patient.id}-${index}`,
     source: "X-ray",
@@ -379,6 +383,18 @@ export function getClinicalAiSuggestions(patient: Patient, noteDraft = ""): Clin
     });
   }
 
+  suggestions.unshift({
+    id: `diagnostic-${patient.id}`,
+    source: "Clinical note",
+    title: `Provider review: ${diagnosticAssist.likelyFocus}`,
+    detail: diagnosticAssist.checklist.slice(0, 2).join(" "),
+    evidence: diagnosticAssist.noteSections.slice(0, 3),
+    nextStep: "Open provider diagnostic checklist before finalizing note.",
+    confidence: diagnosticAssist.confidence,
+    risk: diagnosticAssist.risk,
+    requiresProviderReview: true
+  });
+
   if (!patient.insuranceActive || patient.xrayAgeMonths > 12 || patient.attachments.length === 0) {
     suggestions.push({
       id: `benefit-${patient.id}`,
@@ -398,6 +414,157 @@ export function getClinicalAiSuggestions(patient: Patient, noteDraft = ""): Clin
   }
 
   return suggestions.slice(0, 6);
+}
+
+export function getDiagnosticAssist(patient: Patient, noteDraft = ""): DiagnosticAssistResult {
+  const lowerNote = noteDraft.toLowerCase();
+  const hasPainSignal = ["pain", "ache", "sensitivity", "cold", "hot", "bite", "swelling"].some((term) => lowerNote.includes(term));
+  const urgentFinding = patient.toothFindings.find((finding) => finding.severity === "High") ?? patient.toothFindings[0];
+  const hasRadiographicConcern = patient.toothFindings.some((finding) => ["caries", "rct", "watch"].includes(finding.condition));
+  const perioConcern = patient.perioRisk !== "Low" || patient.bleedingPercent >= 20 || patient.plaquePercent >= 25;
+  const documentationRisk = getClaimGuard(patient).risk;
+
+  const risk: Risk =
+    urgentFinding?.severity === "High" || documentationRisk === "High" || hasPainSignal
+      ? "High"
+      : perioConcern || documentationRisk === "Medium"
+        ? "Medium"
+        : "Low";
+
+  const confidence: Confidence =
+    hasPainSignal && hasRadiographicConcern
+      ? "High"
+      : hasRadiographicConcern || noteDraft.length > 20
+        ? "Medium"
+        : "Low";
+
+  const toothPhrase = urgentFinding ? `tooth #${urgentFinding.tooth} ${urgentFinding.surface}` : "the selected tooth";
+  const likelyFocus =
+    patient.visitType.toLowerCase().includes("limited") || hasPainSignal
+      ? `diagnostic exam workflow for ${toothPhrase}`
+      : perioConcern
+        ? "perio documentation and recall interval"
+        : `documentation completeness for ${patient.plannedProcedure.code}`;
+
+  const checklist = [
+    `Confirm chief complaint, duration, triggers, and current pain level for ${toothPhrase}.`,
+    "Document provider-performed exam, radiograph review, objective findings, and differential considerations.",
+    "Capture cold/percussion/palpation/bite test results when symptoms suggest pulpal or periapical disease.",
+    "Confirm final diagnosis and treatment plan in the provider's words before billing or presenting the estimate."
+  ];
+
+  if (perioConcern) {
+    checklist.push("Review probing depths, bleeding sites, plaque score, radiographic bone levels, and perio classification.");
+  }
+  if (!patient.medicalHistoryCurrent) {
+    checklist.push("Update medical history, medications, allergies, and contraindication review before treatment.");
+  }
+
+  const noteSections = [
+    `CC/HPI: ${noteDraft || patient.clinicalHandoff}`,
+    `Objective: ${urgentFinding ? urgentFinding.note : "No high-risk tooth finding in demo data."}`,
+    `Assessment: Provider to confirm diagnosis; AI cannot diagnose independently.`,
+    `Plan: ${patient.plannedProcedure.description} ${patient.plannedProcedure.tooth ? `on #${patient.plannedProcedure.tooth}` : ""}.`
+  ];
+
+  return {
+    risk,
+    confidence,
+    likelyFocus,
+    checklist,
+    noteSections,
+    contraindicationPrompts: [
+      "Allergies, anticoagulants, bisphosphonates, pregnancy status, recent surgery, cardiac precautions, and antibiotic premedication status.",
+      "Confirm vitals, anesthetic limits, consent, and medical consult needs when clinically appropriate."
+    ],
+    guardrails: [
+      "Dentara may suggest documentation prompts, but only a licensed dentist can diagnose.",
+      "Do not submit claims until provider documentation, CDT code, surfaces, tooth numbers, and payer requirements are verified.",
+      "External AI must run only through a BAA-approved, PHI-safe configuration with audit logs and retention controls."
+    ]
+  };
+}
+
+export function getInsuranceWorkflow(patient: Patient): InsuranceWorkflowStep[] {
+  const claim = getClaimGuard(patient);
+  const checklist = getAttachmentChecklist(patient);
+  const missingRequiredAttachments = checklist.filter((item) => item.required && !item.complete);
+
+  return [
+    {
+      id: `${patient.id}-eligibility`,
+      transaction: "270/271",
+      label: "Eligibility + benefits",
+      status: patient.memberId && patient.insuranceActive && patient.eligibilityCheckedDaysAgo <= 7 ? "Ready" : "Blocked",
+      detail: patient.insuranceActive
+        ? `Benefits checked ${patient.eligibilityCheckedDaysAgo} day${patient.eligibilityCheckedDaysAgo === 1 ? "" : "s"} ago.`
+        : "Coverage is inactive, missing, or stale.",
+      action: patient.memberId ? "Run real-time eligibility" : "Add subscriber/member ID",
+      vendorEndpoint: "DentalXChange Eligibility API, Stedi eligibility workflow, Optum/Change Healthcare eligibility"
+    },
+    {
+      id: `${patient.id}-claim`,
+      transaction: "837D",
+      label: "Dental claim submission",
+      status: claim.findings.some((finding) => finding.severity === "blocker") ? "Blocked" : claim.risk === "Low" ? "Ready" : "Needs Review",
+      detail: claim.findings.length === 0 ? "Claim line is structurally ready in demo data." : `${claim.findings.length} claim issue${claim.findings.length === 1 ? "" : "s"} found.`,
+      action: claim.risk === "Low" ? "Prepare 837D claim" : "Resolve ClaimGuard findings",
+      vendorEndpoint: "DentalXChange Claim API or Stedi Dental Claims API"
+    },
+    {
+      id: `${patient.id}-attachments`,
+      transaction: "275",
+      label: "Attachments + pre-auth packet",
+      status: missingRequiredAttachments.length === 0 ? "Ready" : "Needs Review",
+      detail:
+        missingRequiredAttachments.length === 0
+          ? "Required demo attachments are present or not required."
+          : `${missingRequiredAttachments.map((item) => item.label).join(", ")} missing.`,
+      action: missingRequiredAttachments.length === 0 ? "Attach supporting docs" : "Capture missing attachment",
+      vendorEndpoint: "DentalXChange Attachment API, clearinghouse 275 attachment workflow"
+    },
+    {
+      id: `${patient.id}-status`,
+      transaction: "276/277",
+      label: "Claim status polling",
+      status: patient.claimSubmitted ? "Ready" : "Needs Review",
+      detail: patient.claimSubmitted ? "Claim is submitted and can be polled." : "Submit the claim before status polling.",
+      action: patient.claimSubmitted ? "Poll claim status" : "Submit or hold claim",
+      vendorEndpoint: "Claim status API or clearinghouse mailbox"
+    },
+    {
+      id: `${patient.id}-era`,
+      transaction: "835",
+      label: "ERA/payment posting",
+      status: patient.claimSubmitted && !patient.eraPosted ? "Ready" : patient.eraPosted ? "Ready" : "Needs Review",
+      detail: patient.eraPosted ? "ERA is posted." : patient.claimSubmitted ? "ERA is expected or ready to reconcile." : "No ERA until a claim is accepted.",
+      action: patient.eraPosted ? "Reconcile ledger" : "Queue ERA autopost",
+      vendorEndpoint: "ERA mailbox, Payment/Reconciliation API, or PMS ledger posting adapter"
+    }
+  ];
+}
+
+export function getClearinghouseOptions(): ClearinghouseOption[] {
+  return [
+    {
+      name: "DentalXChange XConnect",
+      fit: "Best dental-specific starting point for eligibility, claims, attachments, payments, and reconciliation APIs.",
+      transactions: ["270/271", "837D", "275", "276/277", "835"],
+      implementationNote: "Request developer access, sandbox credentials, payer enrollment requirements, write-access terms, and a BAA."
+    },
+    {
+      name: "Stedi Dental Claims API",
+      fit: "Modern API-first option for generating and submitting dental claims without hand-building X12.",
+      transactions: ["837D"],
+      implementationNote: "Use for 837D claim automation, then pair with eligibility/status/ERA services as needed."
+    },
+    {
+      name: "Optum / Change Healthcare network APIs",
+      fit: "Broad healthcare network path for eligibility, status, responses, and payer connectivity where dental workflows are supported.",
+      transactions: ["270/271", "276/277", "835"],
+      implementationNote: "Validate dental payer coverage, enrollment steps, outage posture, BAA, and production credentialing."
+    }
+  ];
 }
 
 export function getScheduleInsights(patientList: Patient[]): ScheduleInsight[] {

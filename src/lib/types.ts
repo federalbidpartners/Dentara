@@ -161,7 +161,7 @@ export interface ImagingFinding {
 
 export interface ClinicalAiSuggestion {
   id: string;
-  source: "X-ray" | "Clinical note" | "Perio" | "Benefits" | "Schedule";
+  source: "X-ray" | "Clinical note" | "Perio" | "Benefits" | "Schedule" | "Insurance";
   title: string;
   detail: string;
   evidence: string[];
@@ -178,4 +178,34 @@ export interface ScheduleInsight {
   impact: string;
   action: string;
   risk: Risk;
+}
+
+export interface DiagnosticAssistResult {
+  risk: Risk;
+  confidence: Confidence;
+  likelyFocus: string;
+  checklist: string[];
+  noteSections: string[];
+  contraindicationPrompts: string[];
+  guardrails: string[];
+}
+
+export type InsuranceTransactionKind = "270/271" | "837D" | "275" | "276/277" | "835";
+export type InsuranceTransactionStatus = "Ready" | "Needs Review" | "Blocked";
+
+export interface InsuranceWorkflowStep {
+  id: string;
+  transaction: InsuranceTransactionKind;
+  label: string;
+  status: InsuranceTransactionStatus;
+  detail: string;
+  action: string;
+  vendorEndpoint: string;
+}
+
+export interface ClearinghouseOption {
+  name: string;
+  fit: string;
+  transactions: InsuranceTransactionKind[];
+  implementationNote: string;
 }

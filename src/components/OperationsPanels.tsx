@@ -1,6 +1,6 @@
-import { CheckCircle2, LockKeyhole, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Landmark, LockKeyhole, SendHorizonal, ShieldCheck } from "lucide-react";
 import { hipaaReadinessControls, launchReadiness } from "../lib/compliance";
-import { getGeneratedTasks, getRevenueLeaks } from "../lib/engines";
+import { getClearinghouseOptions, getGeneratedTasks, getInsuranceWorkflow, getRevenueLeaks } from "../lib/engines";
 import { Patient, Task } from "../lib/types";
 import { RiskChip } from "./StatusChip";
 
@@ -14,6 +14,10 @@ export function OperationsPanels({ patients, tasks, onTaskStatus }: OperationsPa
   const generated = getGeneratedTasks(patients);
   const mergedTasks = [...tasks, ...generated].slice(0, 7);
   const leaks = getRevenueLeaks(patients);
+  const insuranceSteps = patients.flatMap((patient) => getInsuranceWorkflow(patient));
+  const blockedTransactions = insuranceSteps.filter((step) => step.status === "Blocked").length;
+  const reviewTransactions = insuranceSteps.filter((step) => step.status === "Needs Review").length;
+  const clearinghouseOptions = getClearinghouseOptions();
 
   return (
     <section className="operations-grid">
@@ -53,6 +57,43 @@ export function OperationsPanels({ patients, tasks, onTaskStatus }: OperationsPa
               </div>
               <div className="leak-value">{typeof leak.value === "number" && leak.value > 20 ? currency(leak.value) : leak.value}</div>
               <RiskChip risk={leak.severity} />
+            </div>
+          ))}
+        </div>
+      </article>
+
+      <article className="ops-panel insurance-panel">
+        <div className="panel-title">
+          <h3>Insurance API Hub</h3>
+          <span>{blockedTransactions} blocked · {reviewTransactions} review</span>
+        </div>
+        <div className="insurance-summary">
+          <Landmark size={18} />
+          <div>
+            <strong>Clearinghouse-ready workflow</strong>
+            <span>Eligibility, 837D claims, attachments, status, and ERA posting are separated so live APIs can be added safely.</span>
+          </div>
+        </div>
+        <div className="transaction-grid">
+          {["270/271", "837D", "275", "276/277", "835"].map((transaction) => {
+            const steps = insuranceSteps.filter((step) => step.transaction === transaction);
+            const blocked = steps.filter((step) => step.status === "Blocked").length;
+            const review = steps.filter((step) => step.status === "Needs Review").length;
+            const status = blocked > 0 ? "Blocked" : review > 0 ? "Needs Review" : "Ready";
+            return (
+              <button className={`transaction-tile ${status.toLowerCase().replace(" ", "-")}`} key={transaction}>
+                <SendHorizonal size={14} />
+                <strong>{transaction}</strong>
+                <span>{status}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="vendor-list">
+          {clearinghouseOptions.map((option) => (
+            <div className="vendor-row" key={option.name}>
+              <strong>{option.name}</strong>
+              <span>{option.fit}</span>
             </div>
           ))}
         </div>

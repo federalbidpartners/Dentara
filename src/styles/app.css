@@ -1142,7 +1142,7 @@ button {
 
 .operations-grid {
   display: grid;
-  grid-template-columns: 1.05fr 1fr 1.2fr;
+  grid-template-columns: 1.05fr 1fr 1.05fr 1.2fr;
   gap: 14px;
   margin-top: 16px;
 }
@@ -1588,6 +1588,27 @@ button {
   box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.12);
 }
 
+.note-assist {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.note-assist button {
+  height: 36px;
+  border: 1px solid #cfe0ff;
+  border-radius: 6px;
+  background: #f6f9ff;
+  color: var(--blue);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
 .smart-code-preview {
   margin-top: 10px;
   display: grid;
@@ -1729,6 +1750,42 @@ button {
   font-size: 12px;
   line-height: 1.4;
   font-weight: 700;
+}
+
+.diagnostic-brief {
+  border: 1px solid #cfe0ff;
+  background: #f6f9ff;
+  border-radius: var(--radius);
+  padding: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.diagnostic-brief span,
+.diagnostic-brief strong {
+  display: block;
+}
+
+.diagnostic-brief span {
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 850;
+  margin-bottom: 4px;
+}
+
+.diagnostic-brief strong {
+  font-size: 13px;
+}
+
+.diagnostic-brief ul {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .ai-suggestion-list {
@@ -2208,6 +2265,102 @@ button {
   grid-template-columns: 24px 1fr;
 }
 
+.insurance-panel {
+  background:
+    linear-gradient(180deg, #fff, #f8fbff);
+}
+
+.insurance-summary {
+  border: 1px solid #cfe0ff;
+  background: #f6f9ff;
+  border-radius: var(--radius);
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 9px;
+  align-items: start;
+  margin-bottom: 10px;
+}
+
+.insurance-summary svg {
+  color: var(--blue);
+}
+
+.insurance-summary strong,
+.insurance-summary span,
+.vendor-row strong,
+.vendor-row span,
+.transaction-tile strong,
+.transaction-tile span {
+  display: block;
+}
+
+.insurance-summary strong,
+.vendor-row strong {
+  font-size: 12px;
+}
+
+.insurance-summary span,
+.vendor-row span,
+.transaction-tile span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
+.transaction-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+  margin-bottom: 10px;
+}
+
+.transaction-tile {
+  min-height: 70px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  padding: 8px;
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  text-align: left;
+}
+
+.transaction-tile svg {
+  color: var(--blue);
+}
+
+.transaction-tile.ready {
+  border-color: #bfe5cf;
+  background: var(--green-soft);
+}
+
+.transaction-tile.needs-review {
+  border-color: #ffd99b;
+  background: var(--amber-soft);
+}
+
+.transaction-tile.blocked {
+  border-color: #ffc7c7;
+  background: var(--red-soft);
+}
+
+.vendor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.vendor-row {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  padding: 9px;
+}
+
 @media (max-width: 1300px) {
   body {
     min-width: 0;
@@ -2254,6 +2407,10 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .operations-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .calendar-hero,
   .schedule-intelligence {
     grid-template-columns: 1fr 1fr;
@@ -2265,6 +2422,10 @@ button {
 
   .wish-actions {
     grid-template-columns: repeat(4, 1fr);
+  }
+
+  .transaction-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .tooth-inspector-card {
@@ -2327,10 +2488,15 @@ button {
   }
 
   .wish-actions,
+  .note-assist,
   .procedure-grid,
   .smart-code-preview,
   .status-row {
     grid-template-columns: 1fr;
+  }
+
+  .transaction-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .table-toolbar {

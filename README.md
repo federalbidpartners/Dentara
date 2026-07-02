@@ -18,6 +18,7 @@ This repository is a production-oriented market demo, not a legal certification.
 - CDT Code Advisor for sample procedure-code suggestions, documentation requirements, payer caveats, and manual verification warnings.
 - Dentist wish-list action bar: one-click crown narrative, pre-auth packet builder, missing attachment detector, before/after compare, chairside patient estimate, hygiene recall gap, clinical handoff note, and finalize-surfaces-and-codes workflow.
 - RevenueLeak engine for risky unsubmitted claims, unposted ERAs, old balances, and unscheduled treatment.
+- Insurance API Hub that separates real-world dental billing into eligibility (`270/271`), dental claim submission (`837D`), attachments/pre-auth (`275`), claim status (`276/277`), and ERA/payment posting (`835`) workflows.
 - NextAction task generation and task completion workflow.
 - Role-aware PHI reveal guard and local audit-event simulation.
 - HIPAA Readiness Center with required launch controls.
@@ -64,6 +65,10 @@ The UI currently runs with local fake data and deterministic engines. A producti
 - Server-side RBAC and audit middleware.
 - Open Dental read-only connector behind a PMS connector interface.
 - Clearinghouse client interface for 270/271, 837D, 277CA, 276/277, 835, and 275 workflows.
+- Recommended insurance API paths to evaluate first:
+  - DentalXChange XConnect for dental-specific eligibility, claims, attachments, payment, and reconciliation APIs.
+  - Stedi Dental Claims API for modern API-first 837D dental claim generation/submission.
+  - Optum/Change Healthcare network APIs for eligibility, claim status, responses, and payer connectivity where dental workflows are supported.
 - Encrypted file storage for attachments and EOBs.
 - Background jobs for eligibility checks, PMS syncs, claim status polling, and revenue leakage scans.
 - BAA-approved AI provider abstraction with no-PHI defaults, policy gates, eval fixtures, prompt/version logging, and human review.

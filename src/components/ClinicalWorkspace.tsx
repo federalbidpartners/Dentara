@@ -21,7 +21,7 @@ import {
   ZoomIn
 } from "lucide-react";
 import * as THREE from "three";
-import { getAttachmentChecklist, getClinicalAiSuggestions, getCodeAdvisor, getEstimateIQ, getImagingFindings, getNarrativeDraft } from "../lib/engines";
+import { getAttachmentChecklist, getClinicalAiSuggestions, getCodeAdvisor, getDiagnosticAssist, getEstimateIQ, getImagingFindings, getNarrativeDraft } from "../lib/engines";
 import { ChartEntry, ChartStatus, Patient, ProcedureLine, ToothCondition, ToothFinding, ToothSurface } from "../lib/types";
 import { ConfidenceChip, RiskChip } from "./StatusChip";
 
@@ -72,6 +72,7 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
   const codeOptions = getCodeAdvisor(patient);
   const imagingFindings = getImagingFindings(patient);
   const aiSuggestions = getClinicalAiSuggestions(patient, noteDraft);
+  const diagnosticAssist = getDiagnosticAssist(patient, noteDraft);
   const checklist = getAttachmentChecklist(patient);
   const estimate = getEstimateIQ(patient);
   const selectedEntries = chartEntries.filter((entry) => entry.tooth === selectedTooth);
@@ -122,6 +123,19 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
     setChartEntries((current) => [entry, ...current]);
     setNoteDraft("");
     onCreateTask(`${selectedStatus} ${procedure.description} on #${selectedTooth} ${selectedSurfaces.join("")}`);
+  }
+
+  function writeAiNoteDraft() {
+    const procedure = buildProcedure(activeProcedure.condition, selectedTooth, selectedSurfaces);
+    setNoteDraft(
+      [
+        `CC/HPI: ${patient.clinicalHandoff}`,
+        `Tooth/Surface: #${selectedTooth} ${selectedSurfaces.join("")}.`,
+        `Objective: ${diagnosticAssist.noteSections[1]?.replace("Objective: ", "") ?? "Provider to document clinical findings."}`,
+        `Assessment: Provider to confirm final diagnosis; AI suggestion is decision support only.`,
+        `Plan: ${selectedStatus} ${procedure.description} (${procedure.code}). Verify CDT coding, payer policy, and attachments before claim submission.`
+      ].join("\n")
+    );
   }
 
   return (
@@ -213,6 +227,10 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
                 placeholder={smartNote(activeProcedure.condition, selectedTooth, selectedSurfaces, selectedStatus)}
               />
             </label>
+            <div className="note-assist">
+              <button onClick={writeAiNoteDraft}><Wand2 size={14} />Draft provider note</button>
+              <button onClick={() => onCreateTask("Provider to complete diagnostic checklist")}><ClipboardCheck size={14} />Diagnostic checklist</button>
+            </div>
             <div className="smart-code-preview">
               <div>
                 <span>Smart code</span>
@@ -275,6 +293,18 @@ export function ClinicalWorkspace({ patient, onCreateTask }: ClinicalWorkspacePr
               <button onClick={() => onCreateTask("Provider to review AI clinical suggestions")}><CheckCircle2 size={14} />Provider review</button>
             </div>
             <p className="ai-disclaimer">Decision support only. Suggestions must be confirmed by the dentist before diagnosis, treatment planning, or billing.</p>
+            <div className="diagnostic-brief">
+              <div>
+                <span>Assist focus</span>
+                <strong>{diagnosticAssist.likelyFocus}</strong>
+              </div>
+              <RiskChip risk={diagnosticAssist.risk} />
+              <ul>
+                {diagnosticAssist.checklist.slice(0, 3).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
             <div className="ai-suggestion-list">
               {aiSuggestions.slice(0, 4).map((suggestion) => (
                 <div className="ai-suggestion" key={suggestion.id}>
